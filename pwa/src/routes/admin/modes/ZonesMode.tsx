@@ -140,7 +140,7 @@ export const ZonesMode: React.FC<ZonesModeProps> = ({ entryPoints, onDelete, onC
                   placeholder="e.g. main-entrance"
                   className="w-full bg-slate-900 border border-slate-700 text-slate-50 rounded-xl p-3 focus:ring-2 focus:ring-teal-400 focus:outline-none font-mono text-sm"
                 />
-                <p className="text-slate-500 text-xs mt-1">URL: your-domain.example.com/q/{newSlug || '...'}</p>
+                <p className="text-slate-500 text-xs mt-1">URL: {(import.meta.env.VITE_QR_BASE_URL || 'https://your-domain.example.com').replace(/^https?:\/\//, '')}/q/{newSlug || '...'}</p>
               </div>
 
               {error && (

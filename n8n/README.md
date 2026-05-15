@@ -51,6 +51,20 @@ n8n does not enforce import order, but to keep referenced sub-workflow IDs valid
 - Activate the workflows you want live (toggle "Inactive" → "Active").
 - Verify the Postgres credential is selected on every Postgres node.
 
+## Per-store configuration
+
+The `021_API_Admin_EntryPoints.json` workflow generates QR-code URLs by reading `stores.settings->>'qr_base_url'` from the database. **You must set this value once per store**, otherwise the URL falls back to `https://your-domain.example.com/q/{slug}`.
+
+```sql
+UPDATE stores
+SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+    'qr_base_url', 'https://kyros.example.com'
+)
+WHERE id = 'YOUR-STORE-UUID';
+```
+
+A template script is in [`../database/setup-store.sql.example`](../database/setup-store.sql.example).
+
 ## Standard response format
 
 All API workflows wrap responses through `005_SUB_Response_Standardizer`:

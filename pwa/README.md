@@ -37,7 +37,12 @@ npm run preview
 
 ## Environment variables
 
-Copy `.env.example` to `.env` and adjust values as needed. The PWA reads no required environment variables for the MVP — `GEMINI_API_KEY` is optional and only used when the (future) AI concierge module is enabled.
+The PWA reads its `.env` from the **repo root** (one level up), not from `pwa/`. This is configured via `envDir: '..'` in `vite.config.ts`, so a single `.env` file at the root of the monorepo serves both the PWA and the database PowerShell scripts.
+
+Copy `../.env.example` to `../.env` and fill in your values. Vite-exposed variables must use the `VITE_` prefix:
+
+- `VITE_QR_BASE_URL` — base URL where QR-code landing pages resolve (used by Control Room preview). Example: `https://kyros.example.com`
+- `GEMINI_API_KEY` — optional, legacy AI concierge placeholder
 
 ## API integration
 

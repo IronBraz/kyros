@@ -39,7 +39,7 @@
         "options": {
           "queryReplacement": "={{ $json.query.store_id }}"
         },
-        "query": "SELECT \n  id,\n  name,\n  slug,\n  'https://n8n.your-domain.example.com/q/' || slug as url,\n  created_at\nFROM entry_points\nWHERE store_id = $1\nORDER BY created_at DESC;"
+        "query": "SELECT \n  ep.id,\n  ep.name,\n  ep.slug,\n  COALESCE(s.settings->>'qr_base_url', 'https://your-domain.example.com') || '/q/' || ep.slug as url,\n  ep.created_at\nFROM entry_points ep\nJOIN stores s ON s.id = ep.store_id\nWHERE ep.store_id = $1\nORDER BY ep.created_at DESC;"
       },
       "position": [500, 200],
       "type": "n8n-nodes-base.postgres",
@@ -53,7 +53,7 @@
         "options": {
           "queryReplacement": "={{ $json.body.store_id }},={{ $json.body.name }},={{ $json.body.slug }}"
         },
-        "query": "INSERT INTO entry_points (store_id, name, slug)\nVALUES ($1, $2, $3)\nRETURNING \n  id,\n  name,\n  slug,\n  'https://n8n.your-domain.example.com/q/' || slug as url,\n  created_at;"
+        "query": "WITH new_ep AS (\n  INSERT INTO entry_points (store_id, name, slug)\n  VALUES ($1, $2, $3)\n  RETURNING id, store_id, name, slug, created_at\n)\nSELECT \n  new_ep.id,\n  new_ep.name,\n  new_ep.slug,\n  COALESCE(s.settings->>'qr_base_url', 'https://your-domain.example.com') || '/q/' || new_ep.slug as url,\n  new_ep.created_at\nFROM new_ep\nJOIN stores s ON s.id = new_ep.store_id;"
       },
       "position": [500, 400],
       "type": "n8n-nodes-base.postgres",

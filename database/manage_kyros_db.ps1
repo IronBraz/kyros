@@ -16,9 +16,19 @@
     Dipendenza: Deve puntare al docker-compose.yml in Documenti-Analisi/NeuroForge
 #>
 
+# --- Carica .env dalla root del repo (single source of truth) ---
+$envFile = Join-Path $PSScriptRoot "..\.env"
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.+?)\s*$') {
+            [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
+        }
+    }
+}
+
 $DbName = "kyros_db"
 $DbUser = "n8n_user"           # Utente applicativo (che userà n8n)
-$SuperUser = "kyros_admin"  # Utente ADMIN (proprietario istanza Postgres)
+$SuperUser = if ($env:KYROS_PG_ADMIN_USER) { $env:KYROS_PG_ADMIN_USER } else { "postgres" }
 $SchemaFile = "$PSScriptRoot\kyros_schema.sql"
 
 # --- RICERCA INTELLIGENTE DOCKER-COMPOSE.YML ---
@@ -52,7 +62,7 @@ function Invoke-PostgresCommand {
     param (
         [string]$Sql,
         [string]$Database = "postgres",
-        [string]$User = "kyros_admin"
+        [string]$User = $script:SuperUser
     )
     # Esegue psql nel container. -T disabilita TTY per output pulito.
     docker compose -f $ComposeFile exec -T postgres psql -U $User -d $Database -c "$Sql"
