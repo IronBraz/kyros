@@ -42,7 +42,6 @@ The PWA reads its `.env` from the **repo root** (one level up), not from `pwa/`.
 Copy `../.env.example` to `../.env` and fill in your values. Vite-exposed variables must use the `VITE_` prefix:
 
 - `VITE_QR_BASE_URL` — base URL where QR-code landing pages resolve (used by Control Room preview). Example: `https://kyros.example.com`
-- `GEMINI_API_KEY` — optional, legacy AI concierge placeholder
 
 ## API integration
 

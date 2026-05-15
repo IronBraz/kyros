@@ -23,9 +23,9 @@ npm install  # Se non già fatto
 ```
 
 ### Environment Variables
-Creare file `.env` nella cartella `OUTPUT/pwa/UNIFIED/`:
+Creare file `.env` alla root del repo (ora consolidato monorepo):
 ```bash
-GEMINI_API_KEY=your_gemini_api_key_here
+VITE_QR_BASE_URL=https://your-domain.example.com
 ```
 
 ---
