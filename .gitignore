@@ -62,3 +62,6 @@ POST_LinkedIn*
 _ul
 GEMINI.md
 .geminiignore
+
+# Owner's private working folder (personal notes, real credentials, scratch files)
+_local/
