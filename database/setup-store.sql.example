@@ -1,0 +1,33 @@
+-- Kyros — Per-store one-time setup
+-- =====================================================================
+-- Run this AFTER you've created your tenant + store via the wizard,
+-- to register the public QR base URL in stores.settings (JSONB).
+--
+-- The n8n workflow `021_API_Admin_EntryPoints.json` reads this value
+-- when generating the URL for new entry points (the URL printed in QR codes).
+--
+-- USAGE:
+-- 1. Copy this file to `_local/setup-store.sql` (still gitignored).
+-- 2. Replace YOUR-STORE-UUID with your real store id (find via: SELECT id, name FROM stores;)
+-- 3. Replace YOUR-DOMAIN.example.com with your real public domain.
+-- 4. Run: psql -U postgres -d kyros_db -f _local/setup-store.sql
+-- =====================================================================
+
+-- Set the QR base URL for one specific store
+UPDATE stores
+SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+    'qr_base_url', 'https://YOUR-DOMAIN.example.com'
+)
+WHERE id = 'YOUR-STORE-UUID';
+
+-- Verify the change
+SELECT id, name, settings->>'qr_base_url' AS qr_base_url
+FROM stores;
+
+-- =====================================================================
+-- Bulk variant: set the same URL on ALL stores (handy on a single-tenant setup)
+-- =====================================================================
+-- UPDATE stores
+-- SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+--     'qr_base_url', 'https://YOUR-DOMAIN.example.com'
+-- );

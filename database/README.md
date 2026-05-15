@@ -40,4 +40,8 @@ See [`../specs/04_Database.md`](../specs/04_Database.md) for the detailed schema
 
 ## Utility script
 
-`manage_kyros_db.ps1` — PowerShell helper for common DB ops (init, reset, backup, check). Optional, not required for production.
+`manage_kyros_db.ps1` — PowerShell helper for common DB ops (init, reset, backup, check). Optional, not required for production. Reads `KYROS_PG_ADMIN_USER` from the repo's root `.env` if present (defaults to `postgres`).
+
+## Per-store setup template
+
+`setup-store.sql.example` — copy to `_local/setup-store.sql`, edit with your real `store.id` and your public domain, run once to register the QR base URL in `stores.settings`. Required for `n8n/021_API_Admin_EntryPoints.json` to generate correct entry-point URLs.
