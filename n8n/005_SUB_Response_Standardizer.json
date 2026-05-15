@@ -1,0 +1,44 @@
+{
+  "name": "Kyros - SUB_Response_Standardizer",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Execute Workflow Trigger",
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            { "name": "success", "type": "boolean" },
+            { "name": "data", "type": "object" },
+            { "name": "error", "type": "object" },
+            { "name": "statusCode", "type": "number" }
+          ]
+        }
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "format-response",
+      "name": "Format Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": $json.success,\n  \"data\": $json.success ? $json.data : undefined,\n  \"error\": !$json.success ? $json.error : undefined,\n  \"meta\": {\n    \"timestamp\": new Date().toISOString(),\n    \"request_id\": $runIndex + '-' + Date.now()\n  },\n  \"statusCode\": $json.statusCode || ($json.success ? 200 : 500)\n} }}",
+        "mode": "raw",
+        "options": { "dotNotation": true }
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "index": 0, "node": "Format Response", "type": "main" }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

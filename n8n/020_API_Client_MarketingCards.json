@@ -1,0 +1,92 @@
+{
+  "name": "Kyros - API_Client_MarketingCards",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "GET /marketing-cards",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "GET",
+        "options": {},
+        "path": "api/v1/client/marketing-cards",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-client-marketing-cards"
+    },
+    {
+      "id": "get-cards",
+      "name": "Get Marketing Cards",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.query.store_id }}"
+        },
+        "query": "SELECT \n  id, \n  type, \n  title, \n  content, \n  icon_name as \"iconName\", \n  theme_color as \"themeColor\",\n  is_active as \"isActive\"\nFROM marketing_cards \nWHERE \n  (store_id = $1 OR scope = 'GLOBAL') \n  AND is_active = true\nORDER BY display_order ASC, created_at DESC\nLIMIT 20;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "format-response",
+      "name": "Format Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"cards\": $json\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString(),\n    \"count\": $json.length\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 300],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "GET /marketing-cards": {
+      "main": [[{
+        "index": 0,
+        "node": "Get Marketing Cards",
+        "type": "main"
+      }]]
+    },
+    "Get Marketing Cards": {
+      "main": [[{
+        "index": 0,
+        "node": "Format Response",
+        "type": "main"
+      }]]
+    },
+    "Format Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond 200",
+        "type": "main"
+      }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

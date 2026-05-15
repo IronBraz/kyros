@@ -1,0 +1,112 @@
+{
+  "name": "Kyros - API_Admin_GetQueueStatus",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "GET /stores/:id/queue/status",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "GET",
+        "options": {},
+        "path": "api/v1/admin/stores/:id/queue/status",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-queue-status"
+    },
+    {
+      "id": "get-status",
+      "name": "Get Queue Status",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": { "queryReplacement": "={{ $json.params.id }}" },
+        "query": "SELECT \n  s.id, s.name,\n  s.settings->'queue'->>'accepting_tickets' as accepting_tickets,\n  (SELECT COUNT(*) FROM sessions WHERE store_id = s.id AND status = 'waiting') as waiting_count,\n  (SELECT COUNT(*) FROM sessions WHERE store_id = s.id AND status = 'called') as called_count,\n  (SELECT AVG(EXTRACT(EPOCH FROM (called_at - created_at))/60) \n   FROM sessions WHERE store_id = s.id AND status IN ('called','serving','finished') \n   AND called_at IS NOT NULL AND DATE(created_at) = CURRENT_DATE) as avg_wait_minutes\nFROM stores s\nWHERE s.id = $1;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "check-found",
+      "name": "Store Found?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "found",
+            "leftValue": "={{ $json.id }}",
+            "operator": { "operation": "exists", "type": "string" },
+            "rightValue": ""
+          }],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "success-response",
+      "name": "Success Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"accepting_tickets\": $json.accepting_tickets === 'true',\n    \"waiting_count\": parseInt($json.waiting_count) || 0,\n    \"called_count\": parseInt($json.called_count) || 0,\n    \"avg_wait_minutes\": Math.round($json.avg_wait_minutes) || 0,\n    \"system_status\": $json.accepting_tickets === 'true' ? 'active' : \n      (parseInt($json.waiting_count) > 0 || parseInt($json.called_count) > 0) ? 'paused' : 'closed'\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 200],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "error-response",
+      "name": "Error Not Found",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"STORE_NOT_FOUND\",\n    \"message\": \"Store not found\"\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-404",
+      "name": "Respond 404",
+      "parameters": {
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "Error Not Found": { "main": [[{ "index": 0, "node": "Respond 404", "type": "main" }]] },
+    "GET /stores/:id/queue/status": { "main": [[{ "index": 0, "node": "Get Queue Status", "type": "main" }]] },
+    "Get Queue Status": { "main": [[{ "index": 0, "node": "Store Found?", "type": "main" }]] },
+    "Store Found?": { "main": [[{ "index": 0, "node": "Success Response", "type": "main" }], [{ "index": 0, "node": "Error Not Found", "type": "main" }]] },
+    "Success Response": { "main": [[{ "index": 0, "node": "Respond 200", "type": "main" }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+}

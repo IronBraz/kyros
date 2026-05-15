@@ -1,0 +1,112 @@
+{
+  "name": "Kyros - API_Client_GetSession",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "GET /sessions/:id",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "GET",
+        "options": {},
+        "path": "api/v1/client/sessions/:id",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-client-session-get"
+    },
+    {
+      "id": "get-session",
+      "name": "Get Session",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": { "queryReplacement": "={{ $json.params.id }}" },
+        "query": "SELECT s.id, s.ticket_code, s.status, s.created_at, s.called_at,\n       s.store_id, st.name as store_name,\n       (SELECT COUNT(*) FROM sessions \n        WHERE store_id = s.store_id \n        AND status = 'waiting' \n        AND created_at < s.created_at) + 1 as position,\n       (SELECT COUNT(*) FROM sessions \n        WHERE store_id = s.store_id \n        AND status = 'waiting') as total_waiting\nFROM sessions s\nJOIN stores st ON st.id = s.store_id\nWHERE s.id = $1;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "check-found",
+      "name": "Session Found?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "found",
+            "leftValue": "={{ $json.id }}",
+            "operator": { "operation": "exists", "type": "string" },
+            "rightValue": ""
+          }],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "success-response",
+      "name": "Success Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"session_id\": $json.id,\n    \"ticket_code\": $json.ticket_code,\n    \"status\": $json.status,\n    \"position\": $json.status === 'waiting' ? $json.position : null,\n    \"total_waiting\": $json.total_waiting,\n    \"store_name\": $json.store_name,\n    \"created_at\": $json.created_at,\n    \"called_at\": $json.called_at\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 200],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "error-response",
+      "name": "Error Not Found",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"SESSION_NOT_FOUND\",\n    \"message\": \"Session not found\"\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-404",
+      "name": "Respond 404",
+      "parameters": {
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "Error Not Found": { "main": [[{ "index": 0, "node": "Respond 404", "type": "main" }]] },
+    "GET /sessions/:id": { "main": [[{ "index": 0, "node": "Get Session", "type": "main" }]] },
+    "Get Session": { "main": [[{ "index": 0, "node": "Session Found?", "type": "main" }]] },
+    "Session Found?": { "main": [[{ "index": 0, "node": "Success Response", "type": "main" }], [{ "index": 0, "node": "Error Not Found", "type": "main" }]] },
+    "Success Response": { "main": [[{ "index": 0, "node": "Respond 200", "type": "main" }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+}

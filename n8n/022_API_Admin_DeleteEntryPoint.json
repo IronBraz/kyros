@@ -1,0 +1,172 @@
+{
+  "name": "Kyros - API_Admin_DeleteEntryPoint",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "DELETE /entry-points/delete",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "DELETE",
+        "options": {},
+        "path": "api/v1/admin/entry-points/delete",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-entry-points-delete"
+    },
+    {
+      "id": "delete-entry-point",
+      "name": "Delete Entry Point",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.query.id }}"
+        },
+        "query": "DELETE FROM entry_points\nWHERE id = $1\nRETURNING id;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "check-deleted",
+      "name": "Check Deleted",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "deleted",
+            "leftValue": "={{ $json.id }}",
+            "operator": {
+              "operation": "exists",
+              "type": "string"
+            },
+            "rightValue": ""
+          }],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "success-response",
+      "name": "Success Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"deleted\": true,\n    \"id\": $json.id\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "error-response",
+      "name": "Error Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"ENTRY_POINT_NOT_FOUND\",\n    \"message\": \"Entry point not found or already deleted\"\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 200],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "respond-404",
+      "name": "Respond 404",
+      "parameters": {
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "DELETE /entry-points/delete": {
+      "main": [[{
+        "index": 0,
+        "node": "Delete Entry Point",
+        "type": "main"
+      }]]
+    },
+    "Delete Entry Point": {
+      "main": [[{
+        "index": 0,
+        "node": "Check Deleted",
+        "type": "main"
+      }]]
+    },
+    "Check Deleted": {
+      "main": [
+        [{
+          "index": 0,
+          "node": "Success Response",
+          "type": "main"
+        }],
+        [{
+          "index": 0,
+          "node": "Error Response",
+          "type": "main"
+        }]
+      ]
+    },
+    "Success Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond 200",
+        "type": "main"
+      }]]
+    },
+    "Error Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond 404",
+        "type": "main"
+      }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "Kyros - SUB_Auth_Manager",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Execute Workflow Trigger",
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            { "name": "session_token", "type": "string" },
+            { "name": "store_id", "type": "string" }
+          ]
+        }
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "auth-check",
+      "name": "Auth Check (MVP Placeholder)",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"authorized\": true,\n  \"store_id\": $json.store_id,\n  \"session_token\": $json.session_token,\n  \"expires_at\": new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()\n} }}",
+        "mode": "raw",
+        "options": { "dotNotation": true }
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "index": 0, "node": "Auth Check (MVP Placeholder)", "type": "main" }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

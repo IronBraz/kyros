@@ -1,0 +1,82 @@
+{
+  "name": "Kyros - System Health",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "v1/admin/health",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "GET /health",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        360
+      ],
+      "webhookId": "health-check-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 'ok' as status, version() as db_version, current_timestamp as server_time, (SELECT count(*) FROM stores) as store_count;",
+        "options": {}
+      },
+      "id": "check-db",
+      "name": "Check DB Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-kyros-cred",
+          "name": "Postgres Kyros"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"{{ $json.status }}\",\n  \"service\": \"kyros-backend\",\n  \"version\": \"0.1.0-mvp\",\n  \"database\": {\n    \"connected\": true,\n    \"version\": \"{{ $json.db_version }}\",\n    \"store_count\": {{ $json.store_count }}\n  },\n  \"timestamp\": \"{{ $json.server_time }}\"\n}",
+        "options": {}
+      },
+      "id": "format-response",
+      "name": "Format Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        360
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "GET /health": {
+      "main": [
+        [
+          {
+            "node": "Check DB Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check DB Status": {
+      "main": [
+        [
+          {
+            "node": "Format Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

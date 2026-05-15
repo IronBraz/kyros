@@ -1,0 +1,335 @@
+{
+  "name": "Kyros - API_Admin_MarketingCards",
+  "nodes": [
+    {
+      "id": "webhook-get",
+      "name": "GET /marketing-cards",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "GET",
+        "options": {},
+        "path": "api/v1/admin/marketing-cards",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 200],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-marketing-cards-get"
+    },
+    {
+      "id": "webhook-post",
+      "name": "POST /marketing-cards",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "api/v1/admin/marketing-cards",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 400],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-marketing-cards-post"
+    },
+    {
+      "id": "webhook-patch",
+      "name": "PATCH /marketing-cards",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "PATCH",
+        "options": {},
+        "path": "api/v1/admin/marketing-cards",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 600],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-marketing-cards-patch"
+    },
+    {
+      "id": "webhook-delete",
+      "name": "DELETE /marketing-cards",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "DELETE",
+        "options": {},
+        "path": "api/v1/admin/marketing-cards",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 800],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-marketing-cards-delete"
+    },
+    {
+      "id": "get-cards",
+      "name": "Get Marketing Cards",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.query.store_id }}"
+        },
+        "query": "SELECT \n  id,\n  type,\n  title,\n  content,\n  icon_name as icon,\n  display_order as priority,\n  is_active as \"isActive\"\nFROM marketing_cards\nWHERE store_id = $1 OR scope = 'GLOBAL'\nORDER BY display_order ASC, created_at DESC;"
+      },
+      "position": [500, 200],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "create-card",
+      "name": "Create Marketing Card",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.body.store_id }},={{ $json.body.type }},={{ $json.body.title }},={{ $json.body.content }},={{ $json.body.icon || 'Star' }},={{ $json.body.priority || 0 }}"
+        },
+        "query": "INSERT INTO marketing_cards (store_id, tenant_id, type, title, content, icon_name, display_order, scope, is_active)\nSELECT $1, s.tenant_id, $2, $3, $4, $5, $6, 'LOCAL', true\nFROM stores s WHERE s.id = $1\nRETURNING \n  id,\n  type,\n  title,\n  content,\n  icon_name as icon,\n  display_order as priority,\n  is_active as \"isActive\",\n  created_at;"
+      },
+      "position": [500, 400],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "update-card",
+      "name": "Update Marketing Card",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.body.type }},={{ $json.body.title }},={{ $json.body.content }},={{ $json.body.icon }},={{ $json.body.priority }},={{ $json.body.isActive === false ? false : true }},={{ $json.query.id }}"
+        },
+        "query": "UPDATE marketing_cards SET\n  type = $1,\n  title = $2,\n  content = $3,\n  icon_name = $4,\n  display_order = $5,\n  is_active = $6,\n  updated_at = NOW()\nWHERE id = $7\nRETURNING \n  id,\n  type,\n  title,\n  content,\n  icon_name as icon,\n  display_order as priority,\n  is_active as \"isActive\",\n  updated_at;"
+      },
+      "position": [500, 600],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "delete-card",
+      "name": "Delete Marketing Card",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.query.id }}"
+        },
+        "query": "DELETE FROM marketing_cards\nWHERE id = $1\nRETURNING id;"
+      },
+      "position": [500, 800],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "format-get-response",
+      "name": "Format GET Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"cards\": $json\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString(),\n    \"count\": $json.length\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 200],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "format-post-response",
+      "name": "Format POST Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": $json[0],\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "format-patch-response",
+      "name": "Format PATCH Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": $json[0],\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 600],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "format-delete-response",
+      "name": "Format DELETE Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"deleted\": true,\n    \"id\": $json[0].id\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 800],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-get-200",
+      "name": "Respond GET 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "respond-post-201",
+      "name": "Respond POST 201",
+      "parameters": {
+        "options": {
+          "responseCode": 201,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "respond-patch-200",
+      "name": "Respond PATCH 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 600],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "respond-delete-200",
+      "name": "Respond DELETE 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 800],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "GET /marketing-cards": {
+      "main": [[{
+        "index": 0,
+        "node": "Get Marketing Cards",
+        "type": "main"
+      }]]
+    },
+    "POST /marketing-cards": {
+      "main": [[{
+        "index": 0,
+        "node": "Create Marketing Card",
+        "type": "main"
+      }]]
+    },
+    "PATCH /marketing-cards": {
+      "main": [[{
+        "index": 0,
+        "node": "Update Marketing Card",
+        "type": "main"
+      }]]
+    },
+    "DELETE /marketing-cards": {
+      "main": [[{
+        "index": 0,
+        "node": "Delete Marketing Card",
+        "type": "main"
+      }]]
+    },
+    "Get Marketing Cards": {
+      "main": [[{
+        "index": 0,
+        "node": "Format GET Response",
+        "type": "main"
+      }]]
+    },
+    "Create Marketing Card": {
+      "main": [[{
+        "index": 0,
+        "node": "Format POST Response",
+        "type": "main"
+      }]]
+    },
+    "Update Marketing Card": {
+      "main": [[{
+        "index": 0,
+        "node": "Format PATCH Response",
+        "type": "main"
+      }]]
+    },
+    "Delete Marketing Card": {
+      "main": [[{
+        "index": 0,
+        "node": "Format DELETE Response",
+        "type": "main"
+      }]]
+    },
+    "Format GET Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond GET 200",
+        "type": "main"
+      }]]
+    },
+    "Format POST Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond POST 201",
+        "type": "main"
+      }]]
+    },
+    "Format PATCH Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond PATCH 200",
+        "type": "main"
+      }]]
+    },
+    "Format DELETE Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond DELETE 200",
+        "type": "main"
+      }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

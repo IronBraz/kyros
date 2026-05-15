@@ -1,0 +1,173 @@
+{
+  "name": "Kyros - API_Admin_AuthVerify",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "POST /auth/verify",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "api/v1/admin/auth/verify",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-auth-verify"
+    },
+    {
+      "id": "check-store",
+      "name": "Check Store Exists",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": { "queryReplacement": "={{ $json.body.store_id }}" },
+        "query": "SELECT id, name FROM stores WHERE id = $1 LIMIT 1;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "store-found",
+      "name": "Store Found?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "found",
+            "leftValue": "={{ $json.id }}",
+            "operator": { "operation": "exists", "type": "string" },
+            "rightValue": ""
+          }],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "verify-pin",
+      "name": "Verify PIN",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": { "queryReplacement": "={{ $('POST /auth/verify').item.json.body.store_id }},{{ $('POST /auth/verify').item.json.body.access_code }}" },
+        "query": "UPDATE admin_access \nSET last_used_at = NOW()\nWHERE store_id = $1 AND access_code = $2 AND is_active = true\nRETURNING id, label, store_id;"
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "pin-valid",
+      "name": "PIN Valid?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "valid",
+            "leftValue": "={{ $json.id }}",
+            "operator": { "operation": "exists", "type": "string" },
+            "rightValue": ""
+          }],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "position": [1250, 200],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "success-response",
+      "name": "Success Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"session_token\": $('Verify PIN').item.json.id + '-' + Date.now(),\n    \"store_id\": $json.store_id,\n    \"store_name\": $('Check Store Exists').item.json.name,\n    \"label\": $json.label,\n    \"expires_at\": new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1500, 100],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1750, 100],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "error-invalid-pin",
+      "name": "Error Invalid PIN",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"INVALID_ACCESS_CODE\",\n    \"message\": \"Codice non valido\"\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1500, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-401",
+      "name": "Respond 401",
+      "parameters": {
+        "options": {
+          "responseCode": 401,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1750, 300],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "error-store-not-found",
+      "name": "Error Store Not Found",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"STORE_NOT_FOUND\",\n    \"message\": \"Store non trovato\"\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-404",
+      "name": "Respond 404",
+      "parameters": {
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "Check Store Exists": { "main": [[{ "index": 0, "node": "Store Found?", "type": "main" }]] },
+    "Error Invalid PIN": { "main": [[{ "index": 0, "node": "Respond 401", "type": "main" }]] },
+    "Error Store Not Found": { "main": [[{ "index": 0, "node": "Respond 404", "type": "main" }]] },
+    "PIN Valid?": { "main": [[{ "index": 0, "node": "Success Response", "type": "main" }], [{ "index": 0, "node": "Error Invalid PIN", "type": "main" }]] },
+    "POST /auth/verify": { "main": [[{ "index": 0, "node": "Check Store Exists", "type": "main" }]] },
+    "Store Found?": { "main": [[{ "index": 0, "node": "Verify PIN", "type": "main" }], [{ "index": 0, "node": "Error Store Not Found", "type": "main" }]] },
+    "Success Response": { "main": [[{ "index": 0, "node": "Respond 200", "type": "main" }]] },
+    "Verify PIN": { "main": [[{ "index": 0, "node": "PIN Valid?", "type": "main" }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+}

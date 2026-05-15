@@ -1,0 +1,173 @@
+{
+  "name": "Kyros - API_Client_CreateSession",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "POST /sessions",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "api/v1/client/sessions",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-client-sessions"
+    },
+    {
+      "id": "validate-entry",
+      "name": "Validate Entry Point",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": { "queryReplacement": "={{ $json.body.entry_point_id }}" },
+        "query": "SELECT ep.id, ep.store_id, ep.name as entry_point_name,\n       s.name as store_name, s.timezone,\n       s.settings->'queue'->>'accepting_tickets' as accepting_tickets,\n       s.settings->'queue'->>'closed_message' as closed_message\nFROM entry_points ep\nJOIN stores s ON s.id = ep.store_id\nWHERE ep.id = $1\nLIMIT 1;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "check-found",
+      "name": "Entry Point Found?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "entry-found",
+            "leftValue": "={{ $json.id }}",
+            "operator": { "operation": "exists", "type": "string" },
+            "rightValue": ""
+          }],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "check-accepting",
+      "name": "Queue Accepting?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "accepting",
+            "leftValue": "={{ $json.accepting_tickets }}",
+            "operator": { "operation": "equals", "type": "string" },
+            "rightValue": "true"
+          }],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "create-session",
+      "name": "Create Session",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": { "queryReplacement": "={{ $('Validate Entry Point').item.json.store_id }},{{ $('POST /sessions').item.json.body.entry_point_id }},{{ $('POST /sessions').item.json.body.language || 'it' }}" },
+        "query": "INSERT INTO sessions (store_id, entry_point_id, ticket_code, status, language)\nVALUES ($1, $2, generate_ticket_code($1), 'waiting', $3)\nRETURNING id, ticket_code, status, created_at,\n  (SELECT COUNT(*) FROM sessions WHERE store_id = $1 AND status = 'waiting' AND created_at < sessions.created_at) + 1 as position;"
+      },
+      "position": [1250, 100],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "success-response",
+      "name": "Success Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"session_id\": $json.id,\n    \"ticket_code\": $json.ticket_code,\n    \"status\": $json.status,\n    \"position\": $json.position,\n    \"store_name\": $('Validate Entry Point').item.json.store_name,\n    \"created_at\": $json.created_at\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString(),\n    \"request_id\": $runIndex + '-' + Date.now()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1500, 100],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-success",
+      "name": "Respond 201",
+      "parameters": {
+        "options": {
+          "responseCode": 201,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1750, 100],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "error-not-found",
+      "name": "Error Not Found",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"ENTRY_POINT_NOT_FOUND\",\n    \"message\": \"Invalid entry point\"\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString(),\n    \"request_id\": $runIndex + '-' + Date.now()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-404",
+      "name": "Respond 404",
+      "parameters": {
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "error-closed",
+      "name": "Error Queue Closed",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"QUEUE_CLOSED\",\n    \"message\": $json.closed_message || \"We're not accepting new customers at the moment.\",\n    \"data\": {\n      \"store_name\": $json.store_name\n    }\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString(),\n    \"request_id\": $runIndex + '-' + Date.now()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1250, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-503",
+      "name": "Respond 503",
+      "parameters": {
+        "options": {
+          "responseCode": 503,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1500, 300],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "Create Session": { "main": [[{ "index": 0, "node": "Success Response", "type": "main" }]] },
+    "Entry Point Found?": { "main": [[{ "index": 0, "node": "Queue Accepting?", "type": "main" }], [{ "index": 0, "node": "Error Not Found", "type": "main" }]] },
+    "Error Not Found": { "main": [[{ "index": 0, "node": "Respond 404", "type": "main" }]] },
+    "Error Queue Closed": { "main": [[{ "index": 0, "node": "Respond 503", "type": "main" }]] },
+    "POST /sessions": { "main": [[{ "index": 0, "node": "Validate Entry Point", "type": "main" }]] },
+    "Queue Accepting?": { "main": [[{ "index": 0, "node": "Create Session", "type": "main" }], [{ "index": 0, "node": "Error Queue Closed", "type": "main" }]] },
+    "Success Response": { "main": [[{ "index": 0, "node": "Respond 201", "type": "main" }]] },
+    "Validate Entry Point": { "main": [[{ "index": 0, "node": "Entry Point Found?", "type": "main" }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+}

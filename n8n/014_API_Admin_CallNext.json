@@ -1,0 +1,248 @@
+{
+  "name": "Kyros - API_Admin_CallNext",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "POST /queue/call-next",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "api/v1/admin/queue/call-next",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-call-next"
+    },
+    {
+      "id": "get-service-point",
+      "name": "Get First Service Point",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.body.store_id }}"
+        },
+        "query": "SELECT id FROM service_points WHERE store_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "set-service-point",
+      "name": "Set Service Point ID",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "service_point_id",
+              "name": "service_point_id",
+              "type": "string",
+              "value": "={{ $json.id || $('POST /queue/call-next').item.json.body.service_point_id }}"
+            },
+            {
+              "id": "store_id",
+              "name": "store_id",
+              "type": "string",
+              "value": "={{ $('POST /queue/call-next').item.json.body.store_id }}"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "call-next",
+      "name": "Call Next FIFO",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.service_point_id }},={{ $json.store_id }}"
+        },
+        "query": "UPDATE sessions SET\n  status = 'called',\n  called_at = NOW(),\n  service_point_id = $1\nWHERE id = (\n  SELECT id FROM sessions\n  WHERE store_id = $2 AND status = 'waiting'\n  ORDER BY created_at ASC\n  FOR UPDATE SKIP LOCKED\n  LIMIT 1\n)\nRETURNING id, ticket_code, store_id, entry_point_id, service_point_id, called_at;"
+      },
+      "position": [1000, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "check-called",
+      "name": "Customer Called?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "called",
+            "leftValue": "={{ $json.id }}",
+            "operator": {
+              "operation": "exists",
+              "type": "string"
+            },
+            "rightValue": ""
+          }],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "position": [1250, 300],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "get-details",
+      "name": "Get Service Point Name",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $('Call Next FIFO').item.json.service_point_id }}"
+        },
+        "query": "SELECT sp.name as service_point_name, s.name as store_name\nFROM service_points sp\nJOIN stores s ON s.id = sp.store_id\nWHERE sp.id = $1;"
+      },
+      "position": [1500, 200],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "success-response",
+      "name": "Success Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"session_id\": $('Call Next FIFO').item.json.id,\n    \"ticket_code\": $('Call Next FIFO').item.json.ticket_code,\n    \"service_point_id\": $('Call Next FIFO').item.json.service_point_id,\n    \"service_point_name\": $json.service_point_name,\n    \"store_name\": $json.store_name,\n    \"called_at\": $('Call Next FIFO').item.json.called_at\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1750, 200],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [2000, 200],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "error-empty",
+      "name": "Error No Customers",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"NO_CUSTOMERS_WAITING\",\n    \"message\": \"No customers waiting in queue\"\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1500, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-404",
+      "name": "Respond 404",
+      "parameters": {
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1750, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "POST /queue/call-next": {
+      "main": [[{
+        "index": 0,
+        "node": "Get First Service Point",
+        "type": "main"
+      }]]
+    },
+    "Get First Service Point": {
+      "main": [[{
+        "index": 0,
+        "node": "Set Service Point ID",
+        "type": "main"
+      }]]
+    },
+    "Set Service Point ID": {
+      "main": [[{
+        "index": 0,
+        "node": "Call Next FIFO",
+        "type": "main"
+      }]]
+    },
+    "Call Next FIFO": {
+      "main": [[{
+        "index": 0,
+        "node": "Customer Called?",
+        "type": "main"
+      }]]
+    },
+    "Customer Called?": {
+      "main": [
+        [{
+          "index": 0,
+          "node": "Get Service Point Name",
+          "type": "main"
+        }],
+        [{
+          "index": 0,
+          "node": "Error No Customers",
+          "type": "main"
+        }]
+      ]
+    },
+    "Error No Customers": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond 404",
+        "type": "main"
+      }]]
+    },
+    "Get Service Point Name": {
+      "main": [[{
+        "index": 0,
+        "node": "Success Response",
+        "type": "main"
+      }]]
+    },
+    "Success Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond 200",
+        "type": "main"
+      }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
