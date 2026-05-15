@@ -1,0 +1,222 @@
+{
+  "name": "Kyros - Infrastructure Management",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "v1/admin/stores/:store_id/service-points",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-create-sp",
+      "name": "POST Create Service Point",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        200
+      ],
+      "webhookId": "create-sp-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO service_points (store_id, name) VALUES ('{{ $json.params.store_id }}', '{{ $json.body.name }}') RETURNING *;",
+        "options": {}
+      },
+      "id": "db-create-sp",
+      "name": "DB: Create Service Point",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-kyros-cred",
+          "name": "Postgres Kyros"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"data\": {{ $json }}
+}",
+        "options": {}
+      },
+      "id": "resp-create-sp",
+      "name": "Response: Created",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "path": "v1/admin/stores/:store_id/infrastructure",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-list-infra",
+      "name": "GET List Infrastructure",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        400
+      ],
+      "webhookId": "list-infra-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT 
+  (SELECT json_agg(sp) FROM (SELECT * FROM service_points WHERE store_id = '{{ $json.params.store_id }}') sp) as service_points,
+  (SELECT json_agg(ep) FROM (SELECT * FROM entry_points WHERE store_id = '{{ $json.params.store_id }}') ep) as entry_points;",
+        "options": {}
+      },
+      "id": "db-get-infra",
+      "name": "DB: Get Infrastructure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-kyros-cred",
+          "name": "Postgres Kyros"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"data\": {\n    \"service_points\": {{ $json.service_points || [] }},\n    \"entry_points\": {{ $json.entry_points || [] }}
+  }
+}",
+        "options": {}
+      },
+      "id": "resp-list-infra",
+      "name": "Response: Infrastructure List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "v1/admin/stores/:store_id/entry-points",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-create-ep",
+      "name": "POST Create Entry Point",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        600
+      ],
+      "webhookId": "create-ep-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO entry_points (store_id, name, slug) VALUES ('{{ $json.params.store_id }}', '{{ $json.body.name }}', '{{ $json.body.slug }}') RETURNING *;",
+        "options": {}
+      },
+      "id": "db-create-ep",
+      "name": "DB: Create Entry Point",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-kyros-cred",
+          "name": "Postgres Kyros"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "POST Create Service Point": {
+      "main": [
+        [
+          {
+            "node": "DB: Create Service Point",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB: Create Service Point": {
+      "main": [
+        [
+          {
+            "node": "Response: Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET List Infrastructure": {
+      "main": [
+        [
+          {
+            "node": "DB: Get Infrastructure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB: Get Infrastructure": {
+      "main": [
+        [
+          {
+            "node": "Response: Infrastructure List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Create Entry Point": {
+      "main": [
+        [
+          {
+            "node": "DB: Create Entry Point",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB: Create Entry Point": {
+      "main": [
+        [
+          {
+            "node": "Response: Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

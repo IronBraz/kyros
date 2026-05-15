@@ -1,0 +1,130 @@
+{
+  "name": "Kyros - API_Admin_SessionCleanup",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "POST /sessions/cleanup",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "api/v1/admin/sessions/cleanup",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-session-cleanup"
+    },
+    {
+      "id": "check-mode",
+      "name": "Check Mode",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "mode-cleanup",
+            "leftValue": "={{ $json.body.mode }}",
+            "operator": { "operation": "equals", "type": "string" },
+            "rightValue": "cleanup"
+          }],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "diagnose-query",
+      "name": "Diagnose Sessions",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {},
+        "query": "SELECT \n  s.id,\n  s.ticket_code,\n  s.status,\n  s.created_at,\n  s.called_at,\n  s.last_seen_at,\n  st.name as store_name,\n  sp.name as service_point_name,\n  CASE \n    WHEN s.status = 'waiting' AND s.last_seen_at < NOW() - INTERVAL '15 minutes' THEN 'ghost_waiting'\n    WHEN s.status = 'called' AND s.called_at < NOW() - INTERVAL '5 minutes' THEN 'stuck_called'\n    WHEN s.status = 'waiting' AND s.created_at < NOW() - INTERVAL '2 hours' THEN 'stale_waiting'\n    WHEN s.status IN ('missed', 'abandoned') AND s.created_at > NOW() - INTERVAL '1 hour' THEN 'recently_ended'\n    ELSE 'active'\n  END as issue_type,\n  EXTRACT(EPOCH FROM (NOW() - COALESCE(s.last_seen_at, s.created_at)))/60 as minutes_since_heartbeat\nFROM sessions s\nJOIN stores st ON st.id = s.store_id\nLEFT JOIN service_points sp ON sp.id = s.service_point_id\nWHERE s.created_at > NOW() - INTERVAL '24 hours'\nORDER BY \n  CASE s.status \n    WHEN 'waiting' THEN 1 \n    WHEN 'called' THEN 2 \n    ELSE 3 \n  END,\n  s.created_at DESC;"
+      },
+      "position": [750, 400],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "cleanup-query",
+      "name": "Cleanup Stuck Sessions",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {},
+        "query": "WITH cleaned AS (\n  UPDATE sessions \n  SET \n    status = 'abandoned',\n    finished_at = NOW()\n  WHERE \n    id IN (\n      SELECT id FROM sessions \n      WHERE \n        (status = 'waiting' AND last_seen_at < NOW() - INTERVAL '15 minutes')\n        OR (status = 'called' AND called_at < NOW() - INTERVAL '5 minutes')\n        OR (status = 'waiting' AND created_at < NOW() - INTERVAL '2 hours')\n    )\n  RETURNING id, ticket_code, status\n)\nSELECT COUNT(*) as cleaned_count FROM cleaned;"
+      },
+      "position": [750, 200],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "diagnose-response",
+      "name": "Diagnose Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"mode\": \"diagnose\",\n    \"sessions\": $input.all().map(s => ({\n      id: s.json.id,\n      ticket_code: s.json.ticket_code,\n      status: s.json.status,\n      issue_type: s.json.issue_type,\n      store_name: s.json.store_name,\n      service_point: s.json.service_point_name,\n      created_at: s.json.created_at,\n      called_at: s.json.called_at,\n      last_seen_at: s.json.last_seen_at,\n      minutes_since_heartbeat: Math.round(s.json.minutes_since_heartbeat)\n    })),\n    \"summary\": {\n      \"total\": $input.all().length,\n      \"ghost_waiting\": $input.all().filter(s => s.json.issue_type === 'ghost_waiting').length,\n      \"stuck_called\": $input.all().filter(s => s.json.issue_type === 'stuck_called').length,\n      \"stale_waiting\": $input.all().filter(s => s.json.issue_type === 'stale_waiting').length,\n      \"active\": $input.all().filter(s => s.json.issue_type === 'active').length\n    }\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "cleanup-response",
+      "name": "Cleanup Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"mode\": \"cleanup\",\n    \"cleaned_count\": $json.cleaned_count,\n    \"message\": `Cleaned ${$json.cleaned_count} stuck session(s)`\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200-diagnose",
+      "name": "Respond Diagnose",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "respond-200-cleanup",
+      "name": "Respond Cleanup",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 200],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "POST /sessions/cleanup": { "main": [[{ "index": 0, "node": "Check Mode", "type": "main" }]] },
+    "Check Mode": {
+      "main": [
+        [{ "index": 0, "node": "Cleanup Stuck Sessions", "type": "main" }],
+        [{ "index": 0, "node": "Diagnose Sessions", "type": "main" }]
+      ]
+    },
+    "Diagnose Sessions": { "main": [[{ "index": 0, "node": "Diagnose Response", "type": "main" }]] },
+    "Cleanup Stuck Sessions": { "main": [[{ "index": 0, "node": "Cleanup Response", "type": "main" }]] },
+    "Diagnose Response": { "main": [[{ "index": 0, "node": "Respond Diagnose", "type": "main" }]] },
+    "Cleanup Response": { "main": [[{ "index": 0, "node": "Respond Cleanup", "type": "main" }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+}

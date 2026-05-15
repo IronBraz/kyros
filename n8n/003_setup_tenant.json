@@ -1,0 +1,85 @@
+{
+  "name": "Kyros - Setup First Store",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "v1/admin/setup",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-setup",
+      "name": "POST /setup",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        360
+      ],
+      "webhookId": "setup-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH new_tenant AS (INSERT INTO tenants (name) VALUES ($1) RETURNING id, name), new_store AS (INSERT INTO stores (tenant_id, name, address) SELECT id, $2, $3 FROM new_tenant RETURNING id, tenant_id, name), new_admin AS (INSERT INTO admin_access (store_id, access_code, label) SELECT id, $4, 'Manager' FROM new_store RETURNING id), init_seq AS (INSERT INTO ticket_sequences (store_id, prefix, current_number) SELECT id, 'A', 0 FROM new_store RETURNING id) SELECT s.id as store_id, s.tenant_id, t.name as brand_name, s.name as store_name FROM new_store s JOIN new_tenant t ON s.tenant_id = t.id;",
+        "options": {
+          "queryParameterValues": "={{ $json.body.brand_name }},{{ $json.body.store_name }},{{ $json.body.address }},{{ $json.body.admin_pin }}"
+        }
+      },
+      "id": "create-structure",
+      "name": "Create All (Transaction)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-kyros-cred",
+          "name": "Postgres Kyros"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"success\",\n  \"message\": \"System initialized successfully\",\n  \"data\": {\n    \"tenant_id\": \"{{ $json.tenant_id }}\",\n    \"store_id\": \"{{ $json.store_id }}\",\n    \"brand\": \"{{ $json.brand_name }}\",\n    \"store\": \"{{ $json.store_name }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "resp-success",
+      "name": "Response: Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        360
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "POST /setup": {
+      "main": [
+        [
+          {
+            "node": "Create All (Transaction)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create All (Transaction)": {
+      "main": [
+        [
+          {
+            "node": "Response: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

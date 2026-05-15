@@ -1,0 +1,64 @@
+{
+  "name": "Kyros - API_Admin_GetQueue",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "GET /queue/current",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "GET",
+        "options": {},
+        "path": "api/v1/admin/queue/current",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-queue-current"
+    },
+    {
+      "id": "get-queue",
+      "name": "Get Queue",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": { "queryReplacement": "={{ $json.query.store_id }}" },
+        "query": "SELECT s.id, s.ticket_code, s.status, s.created_at, s.called_at,\n       s.service_point_id,\n       sp.name as service_point_name,\n       ep.name as entry_point_name,\n       EXTRACT(EPOCH FROM (NOW() - s.created_at))/60 as wait_minutes\nFROM sessions s\nLEFT JOIN service_points sp ON sp.id = s.service_point_id\nLEFT JOIN entry_points ep ON ep.id = s.entry_point_id\nWHERE s.store_id = $1 AND s.status IN ('waiting', 'called')\nORDER BY s.created_at ASC;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "format-response",
+      "name": "Format Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"queue\": $json,\n    \"counts\": {\n      \"waiting\": $json.filter(s => s.status === 'waiting').length,\n      \"called\": $json.filter(s => s.status === 'called').length\n    }\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 300],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "Format Response": { "main": [[{ "index": 0, "node": "Respond 200", "type": "main" }]] },
+    "GET /queue/current": { "main": [[{ "index": 0, "node": "Get Queue", "type": "main" }]] },
+    "Get Queue": { "main": [[{ "index": 0, "node": "Format Response", "type": "main" }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+}

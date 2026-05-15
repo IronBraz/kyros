@@ -1,0 +1,54 @@
+{
+  "name": "Kyros - JOB_Daily_Reset",
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "Daily at 00:05",
+      "parameters": {
+        "rule": {
+          "interval": [{ "expression": "5 0 * * *", "field": "cronExpression" }]
+        }
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "reset-sequences",
+      "name": "Reset Ticket Sequences",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {},
+        "query": "-- Reset ticket sequences for new day\nUPDATE ticket_sequences\nSET current_number = 0, \n    prefix = 'A', \n    last_reset_date = CURRENT_DATE\nWHERE last_reset_date < CURRENT_DATE\nRETURNING id, store_id, last_reset_date;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "log-result",
+      "name": "Log Reset Result",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"job\": \"daily_reset\",\n  \"executed_at\": new Date().toISOString(),\n  \"stores_reset\": $json.length || 0,\n  \"new_date\": new Date().toISOString().split('T')[0]\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    }
+  ],
+  "connections": {
+    "Daily at 00:05": {
+      "main": [[{ "index": 0, "node": "Reset Ticket Sequences", "type": "main" }]]
+    },
+    "Reset Ticket Sequences": {
+      "main": [[{ "index": 0, "node": "Log Reset Result", "type": "main" }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Rome",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

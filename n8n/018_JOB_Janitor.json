@@ -1,0 +1,72 @@
+{
+  "name": "Kyros - JOB_Janitor",
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "Every 5 Minutes",
+      "parameters": {
+        "rule": {
+          "interval": [{ "expression": "*/5 * * * *", "field": "cronExpression" }]
+        }
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "cleanup-abandoned",
+      "name": "Cleanup Abandoned Sessions",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {},
+        "query": "-- Mark abandoned: waiting sessions without heartbeat for 15+ min\nUPDATE sessions \nSET status = 'abandoned', finished_at = NOW()\nWHERE status = 'waiting' \n  AND last_seen_at < NOW() - INTERVAL '15 minutes'\nRETURNING id, ticket_code, store_id;"
+      },
+      "position": [500, 200],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "cleanup-missed",
+      "name": "Cleanup Missed Calls",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {},
+        "query": "-- Mark missed: called sessions not served for 5+ min\nUPDATE sessions \nSET status = 'missed', missed_at = NOW()\nWHERE status = 'called' \n  AND called_at < NOW() - INTERVAL '5 minutes'\nRETURNING id, ticket_code, store_id;"
+      },
+      "position": [500, 400],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "results",
+      "name": "Combine Results",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"job\": \"janitor\",\n  \"executed_at\": new Date().toISOString(),\n  \"abandoned_count\": $('Cleanup Abandoned Sessions').item.json.length || 0,\n  \"missed_count\": $('Cleanup Missed Calls').item.json.length || 0\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    }
+  ],
+  "connections": {
+    "Cleanup Abandoned Sessions": {
+      "main": [[{ "index": 0, "node": "Combine Results", "type": "main" }]]
+    },
+    "Cleanup Missed Calls": {
+      "main": [[{ "index": 0, "node": "Combine Results", "type": "main" }]]
+    },
+    "Every 5 Minutes": {
+      "main": [[
+        { "index": 0, "node": "Cleanup Abandoned Sessions", "type": "main" },
+        { "index": 0, "node": "Cleanup Missed Calls", "type": "main" }
+      ]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Rome",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

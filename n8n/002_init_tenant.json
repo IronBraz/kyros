@@ -1,0 +1,135 @@
+{
+  "name": "Kyros - System Init Check",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "v1/admin/init",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-init",
+      "name": "GET /init",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        820,
+        360
+      ],
+      "webhookId": "init-check-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM tenants LIMIT 1;",
+        "options": {}
+      },
+      "id": "check-tenants",
+      "name": "Get First Tenant",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-kyros-cred",
+          "name": "Postgres Kyros"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.id ? true : false }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-exists",
+      "name": "Tenant Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"ready\",\n  \"setup_required\": false,\n  \"tenant\": {\n    \"id\": \"{{ $json.id }}\",\n    \"name\": \"{{ $json.name }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "resp-ready",
+      "name": "Response: Ready",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"setup_required\",\n  \"setup_required\": true,\n  \"message\": \"No tenant found. Please create the first store.\"\n}",
+        "options": {}
+      },
+      "id": "resp-setup",
+      "name": "Response: Setup Needed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        460
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "GET /init": {
+      "main": [
+        [
+          {
+            "node": "Get First Tenant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get First Tenant": {
+      "main": [
+        [
+          {
+            "node": "Tenant Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tenant Exists?": {
+      "main": [
+        [
+          {
+            "node": "Response: Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Response: Setup Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

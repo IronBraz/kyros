@@ -1,0 +1,112 @@
+{
+  "name": "Kyros - API_Client_Heartbeat",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "POST /sessions/:id/heartbeat",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "api/v1/client/sessions/:id/heartbeat",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-client-heartbeat"
+    },
+    {
+      "id": "update-heartbeat",
+      "name": "Update Heartbeat",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": { "queryReplacement": "={{ $json.params.id }}" },
+        "query": "UPDATE sessions \nSET last_seen_at = NOW()\nWHERE id = $1 AND status IN ('waiting', 'called')\nRETURNING id, status, last_seen_at;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "check-updated",
+      "name": "Session Updated?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [{
+            "id": "updated",
+            "leftValue": "={{ $json.id }}",
+            "operator": { "operation": "exists", "type": "string" },
+            "rightValue": ""
+          }],
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "success-response",
+      "name": "Success Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"status\": $json.status,\n    \"last_seen_at\": $json.last_seen_at\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 200],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "error-response",
+      "name": "Error Not Found",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": false,\n  \"error\": {\n    \"code\": \"SESSION_NOT_FOUND\",\n    \"message\": \"Session not found or already completed\"\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-404",
+      "name": "Respond 404",
+      "parameters": {
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1250, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "Error Not Found": { "main": [[{ "index": 0, "node": "Respond 404", "type": "main" }]] },
+    "POST /sessions/:id/heartbeat": { "main": [[{ "index": 0, "node": "Update Heartbeat", "type": "main" }]] },
+    "Session Updated?": { "main": [[{ "index": 0, "node": "Success Response", "type": "main" }], [{ "index": 0, "node": "Error Not Found", "type": "main" }]] },
+    "Success Response": { "main": [[{ "index": 0, "node": "Respond 200", "type": "main" }]] },
+    "Update Heartbeat": { "main": [[{ "index": 0, "node": "Session Updated?", "type": "main" }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+}

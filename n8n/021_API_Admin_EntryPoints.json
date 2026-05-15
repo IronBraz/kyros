@@ -1,0 +1,173 @@
+{
+  "name": "Kyros - API_Admin_EntryPoints",
+  "nodes": [
+    {
+      "id": "webhook-get",
+      "name": "GET /entry-points",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "GET",
+        "options": {},
+        "path": "api/v1/admin/entry-points",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 200],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-entry-points-get"
+    },
+    {
+      "id": "webhook-post",
+      "name": "POST /entry-points",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "api/v1/admin/entry-points",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 400],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-entry-points-post"
+    },
+    {
+      "id": "get-entry-points",
+      "name": "Get Entry Points",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.query.store_id }}"
+        },
+        "query": "SELECT \n  id,\n  name,\n  slug,\n  'https://n8n.your-domain.example.com/q/' || slug as url,\n  created_at\nFROM entry_points\nWHERE store_id = $1\nORDER BY created_at DESC;"
+      },
+      "position": [500, 200],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "create-entry-point",
+      "name": "Create Entry Point",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $json.body.store_id }},={{ $json.body.name }},={{ $json.body.slug }}"
+        },
+        "query": "INSERT INTO entry_points (store_id, name, slug)\nVALUES ($1, $2, $3)\nRETURNING \n  id,\n  name,\n  slug,\n  'https://n8n.your-domain.example.com/q/' || slug as url,\n  created_at;"
+      },
+      "position": [500, 400],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "format-get-response",
+      "name": "Format GET Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"entry_points\": $json\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString(),\n    \"count\": $json.length\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 200],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "format-post-response",
+      "name": "Format POST Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": $json[0],\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 400],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-get-200",
+      "name": "Respond GET 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 200],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    },
+    {
+      "id": "respond-post-201",
+      "name": "Respond POST 201",
+      "parameters": {
+        "options": {
+          "responseCode": 201,
+          "responseHeaders": {
+            "entries": [{
+              "name": "Content-Type",
+              "value": "application/json"
+            }]
+          }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 400],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "GET /entry-points": {
+      "main": [[{
+        "index": 0,
+        "node": "Get Entry Points",
+        "type": "main"
+      }]]
+    },
+    "POST /entry-points": {
+      "main": [[{
+        "index": 0,
+        "node": "Create Entry Point",
+        "type": "main"
+      }]]
+    },
+    "Get Entry Points": {
+      "main": [[{
+        "index": 0,
+        "node": "Format GET Response",
+        "type": "main"
+      }]]
+    },
+    "Create Entry Point": {
+      "main": [[{
+        "index": 0,
+        "node": "Format POST Response",
+        "type": "main"
+      }]]
+    },
+    "Format GET Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond GET 200",
+        "type": "main"
+      }]]
+    },
+    "Format POST Response": {
+      "main": [[{
+        "index": 0,
+        "node": "Respond POST 201",
+        "type": "main"
+      }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "name": "Kyros - API_Admin_GetStores",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "GET /auth/stores",
+      "parameters": {
+        "authentication": "none",
+        "httpMethod": "GET",
+        "options": {},
+        "path": "api/v1/admin/auth/stores",
+        "responseMode": "responseNode"
+      },
+      "position": [250, 300],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "kyros-admin-stores"
+    },
+    {
+      "id": "get-stores",
+      "name": "Get Stores",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {},
+        "query": "SELECT id, name FROM stores ORDER BY name;"
+      },
+      "position": [500, 300],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "format-response",
+      "name": "Format Response",
+      "parameters": {
+        "jsonOutput": "={{ {\n  \"success\": true,\n  \"data\": {\n    \"stores\": $json\n  },\n  \"meta\": {\n    \"timestamp\": new Date().toISOString()\n  }\n} }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [750, 300],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": { "entries": [{ "name": "Content-Type", "value": "application/json" }] }
+        },
+        "respondWith": "firstIncomingItem"
+      },
+      "position": [1000, 300],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "Format Response": { "main": [[{ "index": 0, "node": "Respond 200", "type": "main" }]] },
+    "GET /auth/stores": { "main": [[{ "index": 0, "node": "Get Stores", "type": "main" }]] },
+    "Get Stores": { "main": [[{ "index": 0, "node": "Format Response", "type": "main" }]] }
+  },
+  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+}
