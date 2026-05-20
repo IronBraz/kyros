@@ -45,6 +45,9 @@ $RECYCLE.BIN/
 .claude/cache/
 .aider*
 
+# graphify knowledge graph (regenerated locally via `graphify update .`)
+graphify-out/
+
 # OneDrive paranoia
 *.tmp
 ~$*
