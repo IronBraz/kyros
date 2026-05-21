@@ -14,7 +14,9 @@ Quando l'admin clicca "Call Next", lanciare in background un workflow che riassu
 
 - **Riferimento Master:** `specs/Pilot_Handover.md` §7 F4
 - **Memoria progetto:** `project-pilot-approach-decision`
-- **Obiettivo:** L'admin che chiama un cliente vede entro ~5s un riassunto + sentiment badge in Control Room.
+- **Obiettivo:** L'admin che chiama un cliente vede entro ~5-8s un riassunto + sentiment badge in Control Room.
+
+> **Trigger preciso (chiarito 2026-05-21):** il trigger è esattamente la transizione `sessions.status: waiting → called` operata dal workflow `CallNext`. Il summary serve all'assistant del service point chiamante come "context handover" della conversazione che il cliente stava avendo con la chat AI. Lato client, contestualmente la chat viene chiusa e sostituita dalla schermata "thanks + desk N" (vedi F5).
 
 ## 2. Specifiche Tecniche
 
@@ -24,13 +26,16 @@ Quando l'admin clicca "Call Next", lanciare in background un workflow che riassu
   - Input: `{ conversation_id }`
   - Logic:
     1. SELECT ultimi N messaggi (max 30) `WHERE conversation_id=...`
-    2. INSERT placeholder in `ai_summaries` con `status='pending'` (idempotente: ON CONFLICT DO NOTHING)
-    3. Chiamata Haiku 4.5 con **structured output JSON**:
+    2. **Caso vuoto**: se 0 messaggi (cliente non ha chattato), INSERT in `ai_summaries` con `summary='No conversation'`, `sentiment=0`, `flags='[]'`, `status='ready'`, `generated_at=NOW()`. Ritorna senza chiamare Anthropic.
+    3. INSERT placeholder in `ai_summaries` con `status='generating'` (idempotente: ON CONFLICT DO NOTHING grazie a UNIQUE su `conversation_id`)
+    4. **Budget check** (chiama `030_SUB_Budget_Check` di F3): se cap superato, UPDATE `status='error'` e ritorna. Il summary non si genera ma il flusso UI continua (F6 mostra "Summary unavailable").
+    5. Chiamata Haiku 4.5 con **structured output JSON** (lingua: EN):
        ```json
        {"summary": "string (max 200 chars)", "sentiment": -1|0|1, "flags": ["string"]}
        ```
-    4. UPDATE `ai_summaries` con risultato + `status='ready'` + `generated_at`
-    5. Su errore: `status='error'`
+    6. UPDATE `ai_summaries` con risultato + `status='ready'` + `generated_at`
+    7. **UPDATE `ai_usage_monthly`** con tokens consumati (stessa logica di F3)
+    8. Su errore Anthropic: `status='error'`
   - Output: `{ status, summary_id }`
 
 ### Prompt summary
@@ -63,11 +68,14 @@ Quando l'admin clicca "Call Next", lanciare in background un workflow che riassu
 ## 4. Definition of Done
 
 - [ ] Workflow 027 creato e attivo
-- [ ] CallNext modificato per triggerare /summarize
+- [ ] CallNext modificato per triggerare /summarize fire-and-forget
 - [ ] GetQueueStatus restituisce `ai_summary` quando esiste
-- [ ] Test end-to-end: cliente chatta → admin clicca Call Next → entro 5s `ai_summaries` ha row con `status='ready'`
+- [ ] Test end-to-end: cliente chatta → admin clicca Call Next → entro 8s `ai_summaries` ha row con `status='ready'`
+- [ ] **Caso vuoto**: cliente NON chatta → admin Call Next → row in `ai_summaries` con `status='ready'` e `summary='No conversation'` (no chiamata Anthropic, no costo)
 - [ ] Sentiment corretto in 3 casi (cliente felice/neutrale/frustrato — testabile con seed script in F7)
-- [ ] Idempotenza verificata (doppio trigger → 1 sola row)
+- [ ] Idempotenza verificata (doppio trigger → 1 sola row, status passa pending→generating→ready)
+- [ ] Budget check rispettato: se cap superato, `status='error'` e niente chiamata Anthropic
+- [ ] Update `ai_usage_monthly` corretto dopo chiamata summary
 
 ## Note per la prossima sessione
 
