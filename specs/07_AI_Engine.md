@@ -36,8 +36,14 @@ Utilizzo di librerie di controllo (es. NeMo Guardrails o logica custom su n8n) p
     *   *Reazione:* Glissare elegantemente. "Preferisco concentrarmi su come rendere perfetta la tua esperienza in store oggi."
 
 ### Layer 3: Grounding (Anti-Allucinazioni)
-*   **Strict RAG (Retrieval-Augmented Generation):** L'AI risponde **SOLO** basandosi sulla Knowledge Base vettoriale fornita (Policy resi, Catalogo, Info Store).
-*   **Gestione dell'Ignoranza:** Se l'informazione non è nel Vector DB, l'AI deve ammetterlo: "Non ho questa informazione specifica, ma posso annotarla per il collega che ti servirà a breve."
+
+> **⚠️ Pilot implementation** — The approach below supersedes pgvector/RAG. See `specs/Pilot_Handover.md` §5 and tasks F1/F3.
+
+*   **Wiki-in-prompt (LLM Wiki / Karpathy approach):** The AI responds **ONLY** based on `knowledge/public/` markdown pages loaded directly into the system prompt on every request. No vector database, no embeddings, no chunking pipeline.
+*   **Prompt Caching:** Wiki content is sent with `cache_control: ephemeral` (Anthropic prompt caching) to reduce cost across conversation turns. Cache TTL: 5 minutes.
+*   **Knowledge Scope:** Only `knowledge/public/` is included — `knowledge/internal/` is never sent to the client AI.
+*   **Wiki Reload:** Triggered manually via the Admin Settings panel (task F8) or on n8n server startup. Deterministic, not dynamic per-request.
+*   **Handling Unknown Information:** If the question is outside the wiki scope: *"I don't have that specific information, but the team member who serves you will be happy to help."*
 
 ## 4. Gestione Sentiment (Escalation Asincrona)
 
@@ -52,18 +58,21 @@ Non salviamo vite, ma miglioriamo il servizio.
 
 ## 5. Performance Thresholds
 
-L'esperienza deve essere fluida come una chat WhatsApp.
+> **Pilot note**: Streaming is NOT implemented (decision #1, 2026-05-20). Chat is request-response (POST → full reply). A WhatsApp-style typing indicator (●●●) covers the 3–5 s wait.
 
-*   **Time to First Token (TTFT):** < 1.5 secondi (Obbligatorio streaming della risposta).
-*   **Risposta Completa:** Entro 4-5 secondi max.
-*   **Caching Semantico:** Le domande frequenti (es. "A che ora chiudete?", "Dov'è il bagno?") devono bypassare l'LLM e ricevere risposta immediata dalla cache (0.1s).
+*   **Full Response Time:** Target 3–5 seconds (Haiku 4.5, ~2k token context with cached wiki)
+*   **Typing Indicator:** Shown immediately on send; hidden when response arrives (task F5)
+*   **Semantic Cache:** Not implemented in Pilot — full wiki is always loaded via prompt caching
 
-## 6. Stack Tecnologico (Ipotesi)
+## 6. Stack Tecnologico (Pilot)
 
-*   **Orchestrator:** n8n (Chain logic).
-*   **LLM Model:** Modelli veloci ed economici (es. GPT-4o-mini, Claude 3 Haiku) per la chat real-time. Modelli più capaci (es. GPT-4o) solo per analisi complesse asincrone.
-*   **Vector DB:** Postgres con `pgvector` (coerente con stack attuale).
-*   **Embeddings:** OpenAI `text-embedding-3-small` o equivalenti open-source locali se privacy-critical.
+*   **Orchestrator:** n8n (direct Anthropic API call — no gateway microservice, decision #1)
+*   **LLM Model:** Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) — fast and economical
+*   **Knowledge Store:** Markdown files in `knowledge/public/` (wiki-in-prompt, no pgvector)
+*   **Prompt Caching:** Anthropic `cache_control: ephemeral` on wiki content block
+*   **Budget Cap:** Hard kill-switch at €3/month via `ai_usage_monthly` table (tasks F3/F8)
+*   **No streaming:** request-response pattern; typing indicator covers wait (task F5)
+*   **No pgvector / embeddings:** deferred to production scale-up if corpus grows beyond LLM context
 
 ## 7. Roadmap Funzionalità AI
 

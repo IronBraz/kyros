@@ -181,3 +181,83 @@ Gli indici sono progettati per ottimizzare le query più frequenti:
 ### Note sulle Performance
 *   **Partial Indexes**: Usati dove possibile per ridurre dimensione indice.
 *   **GIN Index**: Su `ai_context` JSONB per future query semantiche.
+
+---
+
+## 4. AI Pilot Tables (Pilot Phase)
+
+Added via `database/migrations/2026_05_pilot_ai.sql` — **do not modify `kyros_schema.sql`**. These tables support the AI Chat Concierge introduced in the Pilot phase.
+
+### ai_conversations
+
+One row per queue session that engages the AI chat.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | `uuid_generate_v7()` |
+| session_id | UUID UNIQUE FK | `REFERENCES sessions(id) ON DELETE CASCADE` |
+| started_at | TIMESTAMPTZ | When first message was sent |
+| ended_at | TIMESTAMPTZ | When conversation was closed |
+| wiki_version | VARCHAR(20) | Wiki snapshot tag (audit trail) |
+| message_count | INT | Running count (incremented by n8n on each turn) |
+| last_message_at | TIMESTAMPTZ | For idle/abandoned detection |
+
+### ai_messages
+
+One row per turn (user or assistant message).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | `uuid_generate_v7()` |
+| conversation_id | UUID FK | `REFERENCES ai_conversations(id) ON DELETE CASCADE` |
+| role | VARCHAR(10) | `CHECK (role IN ('user','assistant','system'))` |
+| content | TEXT | Message body |
+| tokens_in | INT | Prompt tokens (from Anthropic response headers) |
+| tokens_out | INT | Completion tokens |
+| model | VARCHAR(40) | e.g. `claude-haiku-4-5-20251001` |
+| latency_ms | INT | API round-trip latency |
+| flags | JSONB | Jailbreak flags, content warnings (`{}` default) |
+| created_at | TIMESTAMPTZ | `DEFAULT NOW()` |
+
+### ai_summaries
+
+One row per conversation — populated asynchronously when the ticket is called (task F4).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | `uuid_generate_v7()` |
+| conversation_id | UUID UNIQUE FK | `REFERENCES ai_conversations(id) ON DELETE CASCADE` |
+| summary | TEXT | LLM-generated handover note for staff |
+| sentiment | SMALLINT | `CHECK (sentiment IN (-1, 0, 1))` — negative / neutral / positive |
+| flags | JSONB | Array of content flags (`[]` default) |
+| model | VARCHAR(40) | Model used for summary generation |
+| status | VARCHAR(20) | `CHECK (status IN ('pending','generating','ready','error'))` |
+| generated_at | TIMESTAMPTZ | When status became `ready` |
+
+### ai_usage_monthly
+
+Running monthly budget counter for the hard **€3/mo kill-switch** (decision D3, 2026-05-21).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | `uuid_generate_v7()` |
+| year_month | CHAR(7) UNIQUE | Format: `'2026-05'` |
+| total_input_tokens | BIGINT | Cumulative input tokens this month |
+| total_output_tokens | BIGINT | Cumulative output tokens this month |
+| total_cost_eur | NUMERIC(8,4) | Running cost in EUR; compared to €3.00 cap before each Anthropic call |
+| last_updated | TIMESTAMPTZ | `DEFAULT NOW()` |
+
+### sessions.ai_conversation_id (ALTER)
+
+```sql
+ALTER TABLE sessions ADD COLUMN ai_conversation_id UUID UNIQUE REFERENCES ai_conversations(id);
+```
+
+Bidirectional 1:1 link: `ai_conversations.session_id` (FK → sessions) and `sessions.ai_conversation_id` (FK → ai_conversations). Both columns carry `UNIQUE` — one session maps to exactly one conversation.
+
+### Indices (AI Pilot)
+
+| Index | Table | Columns | Type |
+|-------|-------|---------|------|
+| `idx_ai_messages_conv` | ai_messages | `(conversation_id, created_at)` | BTree |
+| `idx_ai_summaries_status` | ai_summaries | `status` WHERE `pending\|generating` | Partial BTree |

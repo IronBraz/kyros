@@ -1,8 +1,8 @@
 ---
 ID: F3
 TASK: Chat backend — n8n workflows for AI chat (NO gateway, no streaming)
-OWNER: Claude (next session)
-STATUS: TODO
+OWNER: Claude
+STATUS: PENDING_REVIEW
 PHASE: Pilot
 DEPENDS_ON: F1 (wiki must exist), F2 (DB tables must exist)
 ESTIMATE: 1 day
@@ -130,7 +130,56 @@ Frontend ──POST──▶ n8n /api/v1/client/chat/send  (per ogni turno)
 - [ ] Prompt caching attivo: verificare header `cache_read_input_tokens` > 0 dopo prima chiamata
 - [ ] **Alert Anthropic dashboard a 80%** del cap configurato come backup di sicurezza (€2.40/mese)
 
+## Workflow creati (2026-05-21)
+
+| File locale | ID n8n | URL |
+|-------------|--------|-----|
+| `028_SUB_Wiki_Loader.json` | `iKYaPYH9UHDvN3NV` | mind.neuroforge.club |
+| `029_HOOK_Admin_Login_WikiReload.json` | `Xbfq3Yi0ASj7Z6Yy` | mind.neuroforge.club |
+| `030_SUB_Budget_Check.json` | `fnhGqwarmYKLHLaW` | mind.neuroforge.club |
+| `031_API_Admin_Wiki_Reload.json` | `NmMmc6aHYFPx71KW` | /webhook/api/v1/admin/wiki/reload |
+| `032_API_Admin_AIUsage.json` | `NknXf8uS5W6r4vEW` | /webhook/api/v1/admin/usage |
+| `025_API_Client_Chat_Start.json` | `qMIzcaD6GPfxSQ0P` | /webhook/api/v1/client/chat/start |
+| `026_API_Client_Chat_Send.json` | `OWK4dye2UgRmxV6P` | /webhook/api/v1/client/chat/send |
+
+## Azioni manuali necessarie per chiudere F3
+
+### 1. Assegnare credential OpenRouter al nodo "Call OpenRouter" (workflow 026)
+- Aprire workflow `Kyros - API_Client_Chat_Send` (ID: `OWK4dye2UgRmxV6P`) in n8n
+- Cliccare sul nodo **"Call OpenRouter"**
+- Nel campo credential selezionare **"OpenRouter account"** (ID: `qv9d5Wuqi81iDkbq`)
+- Salvare
+- ⚠️ Non è necessario creare una credential Anthropic — il modello viene chiamato tramite OpenRouter
+
+### 2. Aggiungere hook login a `013_API_Admin_AuthVerify` (n8n UI)
+- Aprire il workflow `Kyros - API_Admin_AuthVerify` (ID: `nX6K2xLabjaKBKbu`) in n8n
+- Dopo il nodo **"Respond 200"**, aggiungere un nodo **Execute Sub-workflow**
+- Impostare: workflow ID = `Xbfq3Yi0ASj7Z6Yy` (HOOK_Admin_Login_WikiReload)
+- Impostare: **Wait for Sub-workflow = false** (fire-and-forget)
+- Collegare `Respond 200 → Execute Sub-workflow`
+- Non modificabile via MCP (availableInMCP: false)
+
+### 3. Configurare Docker per lettura wiki e modello AI
+Nel Docker Compose di n8n aggiungere:
+```yaml
+environment:
+  - NODE_FUNCTION_ALLOW_BUILTIN=fs,path
+  - KYROS_KNOWLEDGE_PATH=/opt/kyros/knowledge/public
+  - KYROS_AI_MODEL=anthropic/claude-haiku-4-5   # cambiabile senza editare i workflow
+volumes:
+  - ./knowledge/public:/opt/kyros/knowledge/public:ro
+```
+
+### 4. Attivare i workflow in n8n
+Tutti i workflow sono creati come **inattivi**. Attivarli via n8n UI o API prima del test E2E.
+
 ## Note per la prossima sessione
 
-- Verificare il nome esatto del workflow di admin login esistente (in `n8n/` ci sono i file con i nomi reali)
-- Se il prompt caching n8n risulta difficile da configurare (header custom?), fallback temporaneo: nessun caching, accettiamo costo più alto solo per la demo
+- Tutti i 7 workflow sono salvati in `n8n/` e presenti su n8n instance (mind.neuroforge.club) — pronti da attivare
+- **026 usa OpenRouter** (non Anthropic diretto): `authentication: predefinedCredentialType`, `nodeCredentialType: openRouterApi`
+- Prerequisiti bloccanti prima del test E2E:
+  1. Assegnare credential "OpenRouter account" al nodo "Call OpenRouter" in 026 (n8n UI)
+  2. Aggiungere hook login in 013_AuthVerify (n8n UI, manuale)
+  3. Docker Compose: `NODE_FUNCTION_ALLOW_BUILTIN`, `KYROS_KNOWLEDGE_PATH`, `KYROS_AI_MODEL`, volume mount
+  4. Attivare tutti i workflow
+- Prompt caching rimosso (non disponibile via OpenRouter proxy) — nessun workaround necessario, wiki ~1760 token

@@ -1,0 +1,139 @@
+{
+  "id": "qMIzcaD6GPfxSQ0P",
+  "name": "Kyros - API_Client_Chat_Start",
+  "nodes": [
+    {
+      "id": "ea1e23bb-6546-4cba-85c5-15b5b9cb2f2d",
+      "name": "POST /client/chat/start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 192],
+      "webhookId": "d8a38cbb-d7bf-4d7a-8d43-dbfed6800c4f",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "api/v1/client/chat/start",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "8b7e4a29-1986-4d78-990c-49dbb371a539",
+      "name": "Lookup Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [224, 192],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT s.id, s.status, s.ai_conversation_id,\n              c.id as conv_id, c.wiki_version as conv_wiki_version\n              FROM sessions s\n              LEFT JOIN ai_conversations c ON c.id = s.ai_conversation_id\n              WHERE s.id = $1",
+        "options": { "queryReplacement": "={{ $json.body.session_id }}" }
+      }
+    },
+    {
+      "id": "b85abaee-4a01-42de-9b53-aa18e0987759",
+      "name": "Session Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [448, 192],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [{ "leftValue": "={{ $json.id }}", "operator": { "type": "string", "operation": "notEmpty" } }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "543f2c58-75cd-4cba-90d1-8630fef9ca52",
+      "name": "Existing Conversation?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [672, 96],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [{ "leftValue": "={{ $json.conv_id }}", "operator": { "type": "string", "operation": "notEmpty" } }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "f6f1a3ae-593a-4c7e-b1b0-eb1eb0260784",
+      "name": "Respond Existing",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [896, 0],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, data: { conversation_id: $json.conv_id, wiki_version: $json.conv_wiki_version, resumed: true }, meta: { timestamp: $now.toISO() } } }}",
+        "options": { "responseCode": 200 }
+      }
+    },
+    {
+      "id": "f84e01f7-c870-4dd0-8847-2ca1a7ce716e",
+      "name": "Insert ai_conversations",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [896, 192],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_conversations (session_id, started_at, wiki_version, message_count, last_message_at)\n              VALUES ($1, NOW(), '1.0.0', 0, NOW())\n              RETURNING id, wiki_version",
+        "options": { "queryReplacement": "={{ $json.id }}" }
+      }
+    },
+    {
+      "id": "e8ebd754-538e-4f0f-ba50-c1c4a4d8ed09",
+      "name": "Update sessions.ai_conversation_id",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1120, 192],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sessions SET ai_conversation_id = $1 WHERE id = $2",
+        "options": { "queryReplacement": "={{ $json.id + \",\" + $(\"Lookup Session\").item.json.id }}" }
+      }
+    },
+    {
+      "id": "aa9152fe-eeba-4e2e-bfe2-12253a0e66f9",
+      "name": "Respond Created",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1344, 192],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, data: { conversation_id: $(\"Insert ai_conversations\").item.json.id, wiki_version: $(\"Insert ai_conversations\").item.json.wiki_version, resumed: false }, meta: { timestamp: $now.toISO() } } }}",
+        "options": { "responseCode": 201 }
+      }
+    },
+    {
+      "id": "03592633-b10c-41ff-8aba-a6ed1f523c10",
+      "name": "Respond 404",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [672, 288],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, error: { code: \"SESSION_NOT_FOUND\", message: \"Session not found.\" }, meta: { timestamp: $now.toISO() } } }}",
+        "options": { "responseCode": 404 }
+      }
+    }
+  ],
+  "connections": {
+    "POST /client/chat/start": { "main": [[{ "node": "Lookup Session", "type": "main", "index": 0 }]] },
+    "Lookup Session": { "main": [[{ "node": "Session Valid?", "type": "main", "index": 0 }]] },
+    "Session Valid?": {
+      "main": [
+        [{ "node": "Existing Conversation?", "type": "main", "index": 0 }],
+        [{ "node": "Respond 404", "type": "main", "index": 0 }]
+      ]
+    },
+    "Existing Conversation?": {
+      "main": [
+        [{ "node": "Respond Existing", "type": "main", "index": 0 }],
+        [{ "node": "Insert ai_conversations", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert ai_conversations": { "main": [[{ "node": "Update sessions.ai_conversation_id", "type": "main", "index": 0 }]] },
+    "Update sessions.ai_conversation_id": { "main": [[{ "node": "Respond Created", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "availableInMCP": true }
+}

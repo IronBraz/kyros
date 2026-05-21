@@ -1,0 +1,66 @@
+{
+  "id": "NknXf8uS5W6r4vEW",
+  "name": "Kyros - API_Admin_AIUsage",
+  "nodes": [
+    {
+      "id": "e6acf3e3-3885-4b02-ad92-730b3caa44c9",
+      "name": "GET /admin/usage",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "webhookId": "9204f4da-3fcf-47ca-bbb1-632980b04c93",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "api/v1/admin/usage",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "22926a95-91f4-4f37-9588-0b9b58e376fe",
+      "name": "Get AI Usage This Month",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [224, 0],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT year_month, total_input_tokens, total_output_tokens, total_cost_eur, last_updated FROM ai_usage_monthly WHERE year_month = TO_CHAR(NOW(), 'YYYY-MM') LIMIT 1;",
+        "options": {}
+      }
+    },
+    {
+      "id": "93b48ae1-4280-41c3-98ab-2e7cb0b1a7c7",
+      "name": "Build Usage Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [448, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const CAP_EUR = 3.00;\nconst rows = $input.all();\nconst row = rows.length > 0 ? rows[0].json : {};\nconst cost = parseFloat(row.total_cost_eur || '0');\nreturn [{ json: {\n  success: true,\n  data: {\n    year_month: row.year_month || new Date().toISOString().slice(0, 7),\n    total_input_tokens: parseInt(row.total_input_tokens || '0'),\n    total_output_tokens: parseInt(row.total_output_tokens || '0'),\n    total_cost_eur: cost,\n    cap_eur: CAP_EUR,\n    percent_used: Math.round((cost / CAP_EUR) * 100),\n    last_updated: row.last_updated || null\n  },\n  meta: { timestamp: new Date().toISOString() }\n} }];"
+      }
+    },
+    {
+      "id": "6449674c-1862-43ee-acab-7ae7ebb9c3d0",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [672, 0],
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": { "responseCode": 200 }
+      }
+    }
+  ],
+  "connections": {
+    "GET /admin/usage": {
+      "main": [[{ "node": "Get AI Usage This Month", "type": "main", "index": 0 }]]
+    },
+    "Get AI Usage This Month": {
+      "main": [[{ "node": "Build Usage Response", "type": "main", "index": 0 }]]
+    },
+    "Build Usage Response": {
+      "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1", "availableInMCP": true }
+}

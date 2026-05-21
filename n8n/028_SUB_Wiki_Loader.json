@@ -1,0 +1,31 @@
+{
+  "id": "iKYaPYH9UHDvN3NV",
+  "name": "Kyros - SUB_Wiki_Loader",
+  "nodes": [
+    {
+      "id": "4d42fc46-a5bb-4a07-9ac7-18c733f9010c",
+      "name": "When Called by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0],
+      "parameters": { "inputSource": "passthrough" }
+    },
+    {
+      "id": "fb9596d9-cab5-4b20-93eb-4e651492e96b",
+      "name": "Load Wiki from Filesystem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [224, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Requires: NODE_FUNCTION_ALLOW_BUILTIN=fs,path in n8n Docker environment\n// Requires: KYROS_KNOWLEDGE_PATH env var pointing to knowledge/public/ mount path\nconst fs = require('fs');\nconst path = require('path');\n\nconst knowledgePath = $env.KYROS_KNOWLEDGE_PATH || '/opt/kyros/knowledge/public';\nlet wikiContent = '';\nlet fileCount = 0;\nlet loadedAt = new Date().toISOString();\n\ntry {\n  const files = fs.readdirSync(knowledgePath)\n    .filter(f => f.endsWith('.md'))\n    .sort();\n  fileCount = files.length;\n  wikiContent = files.map(f => {\n    const raw = fs.readFileSync(path.join(knowledgePath, f), 'utf8');\n    return '### ' + f + '\\n' + raw;\n  }).join('\\n\\n---\\n\\n');\n} catch(err) {\n  wikiContent = '[Knowledge base temporarily unavailable. Please apologise and ask the customer to direct questions to the team member at the desk.]';\n}\n\nreturn [{ json: { wiki_content: wikiContent, file_count: fileCount, wiki_version: '1.0.0', loaded_at: loadedAt } }];"
+      }
+    }
+  ],
+  "connections": {
+    "When Called by Another Workflow": {
+      "main": [[{ "node": "Load Wiki from Filesystem", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1", "availableInMCP": true }
+}

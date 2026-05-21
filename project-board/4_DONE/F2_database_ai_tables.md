@@ -1,8 +1,8 @@
 ---
 ID: F2
 TASK: Database — AI Pilot tables migration
-OWNER: Claude (next session)
-STATUS: TODO
+OWNER: Claude
+STATUS: DONE
 PHASE: Pilot
 DEPENDS_ON: (none — can run in parallel with F1)
 ESTIMATE: 2-3 hours

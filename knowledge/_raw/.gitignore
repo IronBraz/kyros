@@ -1,0 +1,4 @@
+# Keep this folder tracked by git but ignore all PDFs and raw documents
+*
+!.gitignore
+!.gitkeep

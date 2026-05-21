@@ -1,0 +1,31 @@
+{
+  "id": "Xbfq3Yi0ASj7Z6Yy",
+  "name": "Kyros - HOOK_Admin_Login_WikiReload",
+  "nodes": [
+    {
+      "id": "403f6693-0d87-42ed-aae5-dcb12c1984df",
+      "name": "When Called by Admin Login",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0],
+      "parameters": { "inputSource": "passthrough" }
+    },
+    {
+      "id": "ec114e5f-7b55-4336-9f58-d26b845a0864",
+      "name": "Check Wiki Accessibility",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [224, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const fs = require('fs');\nconst knowledgePath = $env.KYROS_KNOWLEDGE_PATH || '/opt/kyros/knowledge/public';\nlet accessible = false;\nlet fileCount = 0;\ntry {\n  const files = fs.readdirSync(knowledgePath).filter(f => f.endsWith('.md'));\n  fileCount = files.length;\n  accessible = fileCount > 0;\n} catch(err) {\n  accessible = false;\n}\nreturn [{ json: { wiki_accessible: accessible, file_count: fileCount, checked_at: new Date().toISOString() } }];"
+      }
+    }
+  ],
+  "connections": {
+    "When Called by Admin Login": {
+      "main": [[{ "node": "Check Wiki Accessibility", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1", "availableInMCP": true }
+}

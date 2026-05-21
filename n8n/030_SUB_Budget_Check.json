@@ -1,0 +1,47 @@
+{
+  "id": "fnhGqwarmYKLHLaW",
+  "name": "Kyros - SUB_Budget_Check",
+  "nodes": [
+    {
+      "id": "704d0880-4baa-46ac-b81b-1a337abbba17",
+      "name": "When Called by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0],
+      "parameters": { "inputSource": "passthrough" }
+    },
+    {
+      "id": "eb608db9-4fcc-4d16-a9aa-43171925524e",
+      "name": "Get Monthly Budget Row",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [224, 0],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT year_month, total_cost_eur FROM ai_usage_monthly WHERE year_month = TO_CHAR(NOW(), 'YYYY-MM') LIMIT 1;",
+        "options": {}
+      }
+    },
+    {
+      "id": "da583068-16b9-4234-a910-eea6d605d44f",
+      "name": "Build Budget Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [448, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const CAP_EUR = 3.00;\nconst rows = $input.all();\nconst currentCost = rows.length > 0 && rows[0].json.total_cost_eur ? parseFloat(rows[0].json.total_cost_eur) : 0;\nreturn [{ json: {\n  within_budget: currentCost < CAP_EUR,\n  current_cost: currentCost,\n  cap_eur: CAP_EUR,\n  percent_used: Math.round((currentCost / CAP_EUR) * 100)\n} }];"
+      }
+    }
+  ],
+  "connections": {
+    "When Called by Another Workflow": {
+      "main": [[{ "node": "Get Monthly Budget Row", "type": "main", "index": 0 }]]
+    },
+    "Get Monthly Budget Row": {
+      "main": [[{ "node": "Build Budget Status", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1", "availableInMCP": true }
+}
