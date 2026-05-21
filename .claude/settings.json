@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CMD=$(\"/c/Users/IronLab/AppData/Roaming/uv/tools/graphifyy/Scripts/python.exe\" -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',d).get('command',''))\" 2>/dev/null || true); case \"$CMD\" in *grep*|*rg\\ *|*ripgrep*|*find\\ *|*fd\\ *|*ack\\ *|*ag\\ *)   [ -f graphify-out/graph.json ] &&   echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify: knowledge graph at graphify-out/. For focused questions, run `graphify query \\\"<question>\\\"` (scoped subgraph, usually much smaller than GRAPH_REPORT.md) instead of grepping raw files. Read GRAPH_REPORT.md only for broad architecture context.\"}}'   || true ;; esac"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(\"/c/Users/IronLab/AppData/Roaming/uv/tools/graphifyy/Scripts/python.exe\" -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))\" 2>/dev/null || true); case \"$FILE\" in */specs/*|*/project-board/*|*/n8n/*|*/CLAUDE.md|*/README.md|*/CHANGELOG.md|*/docs/*)   [ -d graphify-out ] && echo \"$FILE\" >> graphify-out/.needs_update 2>/dev/null || true ;; esac"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -s graphify-out/.needs_update ]; then : > graphify-out/.needs_update; graphify update . >/dev/null 2>&1; fi",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

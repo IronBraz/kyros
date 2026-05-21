@@ -68,3 +68,9 @@ GEMINI.md
 
 # Owner's private working folder (personal notes, real credentials, scratch files)
 _local/
+
+# Knowledge wiki — raw PDFs (processed into markdown pages; originals are local only)
+knowledge/_raw/*.pdf
+
+# Claude Code — local permission overrides (machine-specific, not project config)
+.claude/settings.local.json

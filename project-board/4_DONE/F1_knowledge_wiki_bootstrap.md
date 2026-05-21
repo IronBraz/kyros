@@ -1,8 +1,8 @@
 ---
 ID: F1
 TASK: Knowledge Wiki — bootstrap LLM Wiki folder structure
-OWNER: Claude (next session)
-STATUS: TODO
+OWNER: Claude
+STATUS: DONE
 PHASE: Pilot
 DEPENDS_ON: (none — can run in parallel with F2)
 ESTIMATE: 1 day
