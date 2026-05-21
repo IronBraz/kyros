@@ -57,22 +57,43 @@ ai_summaries (
   sentiment SMALLINT CHECK (sentiment IN (-1, 0, 1)),
   flags JSONB DEFAULT '[]',
   model VARCHAR(40),
-  status VARCHAR(20) DEFAULT 'pending',  -- pending|ready|error
+  status VARCHAR(20) DEFAULT 'pending',  -- pending|generating|ready|error
   generated_at TIMESTAMPTZ
 )
+
+ai_usage_monthly (
+  id UUID PK uuid_generate_v7(),
+  year_month CHAR(7) NOT NULL UNIQUE,    -- '2026-05'
+  total_input_tokens BIGINT NOT NULL DEFAULT 0,
+  total_output_tokens BIGINT NOT NULL DEFAULT 0,
+  total_cost_eur NUMERIC(8,4) NOT NULL DEFAULT 0,
+  last_updated TIMESTAMPTZ DEFAULT NOW()
+)
 ```
+
+> **Nota su `ai_usage_monthly`** (aggiunta 2026-05-21 dal piano audit, decision D3): tabella di running total per il **budget cap €3/mese** con hard kill-switch in n8n. Workflow F3 leggono questa row per il mese corrente prima di chiamare Anthropic; se `total_cost_eur >= 3.00`, ritornano canned response senza chiamare l'API. UPDATE eseguito dopo ogni chiamata Anthropic riuscita (chat + summary).
 
 ### Modifica a `sessions`
 
 ```sql
-ALTER TABLE sessions ADD COLUMN ai_conversation_id UUID REFERENCES ai_conversations(id);
+ALTER TABLE sessions ADD COLUMN ai_conversation_id UUID UNIQUE REFERENCES ai_conversations(id);
 ```
+
+> **Nota su `UNIQUE`** (aggiunta 2026-05-21 dal piano audit, B5): senza UNIQUE due session potrebbero erroneamente linkare alla stessa conversation. La FK lato `ai_conversations.session_id` è già UNIQUE, qui chiudiamo la simmetria.
 
 ### Indici
 
 ```sql
 CREATE INDEX idx_ai_messages_conv ON ai_messages(conversation_id, created_at);
-CREATE INDEX idx_ai_summaries_status ON ai_summaries(status) WHERE status = 'pending';
+CREATE INDEX idx_ai_summaries_status ON ai_summaries(status) WHERE status IN ('pending', 'generating');
+```
+
+### Seed iniziale
+
+```sql
+-- Inizializza row del mese corrente per il budget counter
+INSERT INTO ai_usage_monthly (year_month) VALUES (TO_CHAR(NOW(), 'YYYY-MM'))
+ON CONFLICT (year_month) DO NOTHING;
 ```
 
 ### File Coinvolti
@@ -89,10 +110,13 @@ CREATE INDEX idx_ai_summaries_status ON ai_summaries(status) WHERE status = 'pen
 ## 4. Definition of Done
 
 - [ ] File `database/migrations/2026_05_pilot_ai.sql` creato
-- [ ] Le 3 tabelle si creano senza errori su un DB vuoto
+- [ ] Le **4 tabelle** (ai_conversations, ai_messages, ai_summaries, ai_usage_monthly) si creano senza errori su un DB vuoto
 - [ ] FK verificate (`\d ai_conversations` mostra reference a `sessions`)
-- [ ] Indici creati
-- [ ] Sezione "AI Pilot Tables" aggiunta a `specs/04_Database.md`
+- [ ] `\d sessions` mostra `ai_conversation_id UUID UNIQUE`
+- [ ] `ai_summaries.status` CHECK constraint accetta `pending|generating|ready|error`
+- [ ] Indici creati (incluso index parziale su `pending|generating`)
+- [ ] Seed iniziale di `ai_usage_monthly` per il mese corrente eseguito
+- [ ] Sezione "AI Pilot Tables" aggiunta a `specs/04_Database.md` (includere `ai_usage_monthly`)
 - [ ] (Opzionale) Smoke test: `INSERT` di una row su ogni tabella + `SELECT` con JOIN
 
 ## Note per la prossima sessione

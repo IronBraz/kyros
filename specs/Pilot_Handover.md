@@ -7,6 +7,22 @@
 
 ---
 
+> **⚠️ AGGIORNAMENTO 2026-05-20 / 2026-05-21 — leggere prima del resto del documento**
+>
+> Le sezioni §6.1 e §7 F3 di questo handover descrivono un **AI Gateway microservice con streaming SSE**. Quella architettura è stata **superseded**: nella conversazione del 2026-05-20 l'owner ha scelto l'opzione "no gateway / no streaming". Il design corrente è:
+>
+> - **NO microservizio gateway** — la chat è gestita direttamente da workflow n8n
+> - **NO streaming SSE** — request/response classico con "typing indicator" lato UI (3-5s di attesa)
+> - **NO Socket.io** — polling come nell'MVP
+> - **Provider**: Anthropic Haiku 4.5 cloud, system prompt con wiki in `cache_control: ephemeral`
+> - **Lingua chat**: English (anche se il resto dell'app è in italiano)
+> - **Budget cap**: €3/mese (aggiornato dal piano di audit 2026-05-21) con hard kill-switch in n8n + counter visibile nel pannello Settings admin
+> - **Comportamento mid-chat ticket-called**: la conversazione viene "consegnata" all'assistant — la chat client diventa una schermata "thanks + desk N", il summary viene generato al momento del Call Next
+>
+> **Fonte autoritativa per il design Pilot**: i task file in `project-board/1_TODO/F1_*.md ... F8_*.md` (refined il 2026-05-21) e la memoria `project-pilot-approach-decision`. Questo handover documento resta utile per il contesto e le motivazioni, ma se c'è conflitto con un F-task file, **vincono gli F-task file**.
+
+---
+
 ## 1. Scopo di questo documento
 
 Questo documento è un **handover** pensato per essere ridato in pasto a una futura sessione di Claude Code (o a un collaboratore umano). Riassume:

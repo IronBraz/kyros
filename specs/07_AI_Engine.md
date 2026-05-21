@@ -1,5 +1,7 @@
 # 07 - AI Engine & Guardrails Specification
 
+> **⚠️ Nota Pilot (2026-05-21)** — La persona qui sotto è scritta in **italiano** perché concepita in fase MVP/produzione. Per il **Pilot** (demo interna) la chat AI è in **English** (decisione owner 2026-05-20). Chi implementa il system prompt nel workflow n8n `026_API_Client_Chat_Send.json` (task F3) deve **tradurre la persona in inglese** e non copiare letteralmente le sezioni §2-§3 di questo documento. Inoltre la sezione "Layer 3 Strict RAG / pgvector" (se presente) è superseded dal pattern "LLM Wiki" (system prompt + prompt caching) — vedi `specs/Pilot_Handover.md` §5 e i task F1/F3.
+
 ## 1. Visione
 L'AI Engine è la "mente" di Kyros. Non è un semplice chatbot, ma un **Digital Concierge** progettato per intrattenere, informare e preparare il cliente durante l'attesa.
 La sua missione è trasformare il "tempo morto" della coda in "tempo di valore" (branding, info prodotti), agendo come un ambasciatore impeccabile del brand.
