@@ -1,0 +1,14 @@
+# Kyros Pilot — n8n extensions
+# Place (or symlink) this file as C:\NeuroForge\docker-compose.override.yml
+# Docker Compose merges it automatically with the base docker-compose.yml.
+#
+# What this adds:
+#   - NODE_FUNCTION_ALLOW_BUILTIN: allows fs + path in Code nodes (wiki loader)
+#   - Read-only bind mount: Kyros knowledge/public → /opt/kyros/knowledge/public
+
+services:
+  n8n:
+    environment:
+      - NODE_FUNCTION_ALLOW_BUILTIN=fs,path
+    volumes:
+      - "C:/Users/IronLab/OneDrive/Documenti/Progetti/Kyros/knowledge/public:/opt/kyros/knowledge/public:ro"
