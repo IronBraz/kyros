@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { MessageCircle, X, ChevronDown } from 'lucide-react';
+import { MessageCircle, X, ChevronDown, Sparkles } from 'lucide-react';
 import { useChatStore } from '@/store/useChatStore';
 import { useSessionStore } from '@/store/useSessionStore';
 import { startConversation, sendChatMessage } from '@/lib/api/chat';
@@ -131,14 +131,15 @@ export const ChatPanel: React.FC<Props> = ({ sessionId, isCalled, assignedDesk }
 
   return (
     <>
-      {/* FAB */}
+      {/* Concierge entry button */}
       {!open && (
         <button
           onClick={openPanel}
-          className="fixed bottom-24 right-6 z-40 min-w-[56px] min-h-[56px] rounded-full bg-teal-500 text-slate-900 shadow-lg shadow-teal-500/30 flex items-center justify-center hover:bg-teal-400 active:scale-95 transition-all"
-          aria-label="Open chat"
+          className="fixed bottom-24 right-4 z-40 flex items-center gap-3 px-5 py-3 rounded-2xl bg-teal-500 text-slate-900 shadow-lg shadow-teal-500/30 hover:bg-teal-400 active:scale-95 transition-all"
+          aria-label="Open AI Concierge chat"
         >
-          <MessageCircle size={24} />
+          <Sparkles size={18} strokeWidth={2.5} />
+          <span className="text-sm font-semibold tracking-wide whitespace-nowrap">Ask our AI Concierge</span>
         </button>
       )}
 

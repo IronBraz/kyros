@@ -89,7 +89,8 @@ export const YourTurn: React.FC = () => {
         </div>
 
         <h1 className="text-4xl font-serif font-bold text-slate-50 mb-2">It's Your Turn</h1>
-        <p className="text-slate-400 mb-8 font-medium">Please proceed immediately.</p>
+        <p className="text-slate-400 mb-3 font-medium">Please proceed immediately.</p>
+        <p className="text-slate-500 text-sm mb-8">Your chat has been shared with our assistant — they'll greet you personally.</p>
 
         {/* Counter Assignment */}
         <div className="bg-slate-800 rounded-2xl p-6 mb-4 border-2 border-teal-400/50 shadow-[0_0_20px_rgba(47,93,80,0.2)] overflow-hidden">

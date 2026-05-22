@@ -60,7 +60,7 @@ export const WaitingRoom: React.FC = () => {
           setAssignedDesk(data.service_point_name || 'Cassa A');
           setStatus('called');
           setIsCalled(true);
-          setTimeout(() => navigate('/your-turn'), 1500);
+          setTimeout(() => navigate('/your-turn'), 6000);
         } else if (data.status === 'finished' || data.status === 'abandoned' || data.status === 'missed') {
           // Session ended (completed, user left, or missed their turn)
           clearSession();
