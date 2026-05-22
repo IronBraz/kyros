@@ -1,6 +1,7 @@
 import React from 'react';
 import { Customer } from '@/types/admin';
-import { Clock, User, RotateCcw, CheckCircle, Bell, MapPin } from 'lucide-react';
+import { Clock, User, Bell, MapPin } from 'lucide-react';
+import { ContextSummaryCard } from '@/components/admin/ContextSummaryCard';
 
 interface CounterModeProps {
   waiting: Customer[];
@@ -95,7 +96,15 @@ export const CounterMode: React.FC<CounterModeProps> = ({
             <span>NEXT</span>
           </button>
 
-          {/* 2. CURRENTLY SERVING */}
+          {/* 2. AI CONTEXT SUMMARY (shown when customer is called) */}
+          {currentCalled && (
+            <ContextSummaryCard
+              summary={currentCalled.ai_summary}
+              ticketCode={currentCalled.ticketCode}
+            />
+          )}
+
+          {/* 3. CURRENTLY SERVING */}
           <div className="bg-slate-800 border border-teal-400/30 shadow-lg shadow-teal-400/5 rounded-2xl p-6 relative overflow-hidden shrink-0">
             <div className="absolute top-0 right-0 p-4 opacity-5">
                <User size={120} className="text-teal-400" />

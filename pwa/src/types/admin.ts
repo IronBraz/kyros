@@ -6,6 +6,14 @@ export interface Store {
   name: string;
 }
 
+// AI summary for a customer conversation
+export interface AISummary {
+  summary: string | null;
+  sentiment: -1 | 0 | 1;
+  flags: string[];
+  status: 'pending' | 'generating' | 'ready' | 'error';
+}
+
 // Customer in queue
 export interface Customer {
   id: string;
@@ -15,8 +23,19 @@ export interface Customer {
   status: 'waiting' | 'called' | 'served' | 'missed' | 'abandoned';
   calledAt?: string;
   missedAt?: string;
-  entryPointName?: string; // Name of entry point used
+  entryPointName?: string;
+  ai_summary?: AISummary;
 }
+
+// AI usage for current month
+export interface AIUsage {
+  year_month: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_eur: number;
+}
+
+export type WikiStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
 // Entry point (QR/NFC entry location)
 export interface EntryPoint {

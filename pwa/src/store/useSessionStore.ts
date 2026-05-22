@@ -9,6 +9,7 @@ interface SessionState {
   storeName: string | null;
   storeId: string | null;
   assignedDesk: string | null;
+  aiConversationId: string | null;
 
   // Queue State
   status: SessionStatus;
@@ -24,6 +25,7 @@ interface SessionState {
   setAssignedDesk: (desk: string) => void;
   setStatus: (status: SessionStatus) => void;
   setMarketingCards: (cards: MarketingCard[]) => void;
+  setAiConversationId: (id: string) => void;
   clearSession: () => void;
 }
 
@@ -35,6 +37,7 @@ export const useSessionStore = create<SessionState>()(
       storeName: null,
       storeId: null,
       assignedDesk: null,
+      aiConversationId: null,
       status: 'idle',
       position: null,
       estimatedWaitMinutes: null,
@@ -62,6 +65,8 @@ export const useSessionStore = create<SessionState>()(
 
       setMarketingCards: (cards) => set({ marketingCards: cards }),
 
+      setAiConversationId: (id) => set({ aiConversationId: id }),
+
       clearSession: () => set({
         sessionId: null,
         ticketCode: null,
@@ -71,7 +76,8 @@ export const useSessionStore = create<SessionState>()(
         position: null,
         estimatedWaitMinutes: null,
         marketingCards: [],
-        assignedDesk: null
+        assignedDesk: null,
+        aiConversationId: null,
       })
     }),
     {
@@ -82,7 +88,8 @@ export const useSessionStore = create<SessionState>()(
         storeName: state.storeName,
         storeId: state.storeId,
         status: state.status,
-        assignedDesk: state.assignedDesk
+        assignedDesk: state.assignedDesk,
+        aiConversationId: state.aiConversationId,
       })
     }
   )

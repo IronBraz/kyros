@@ -130,6 +130,26 @@ export async function deleteMarketingCard(id: string): Promise<ApiResponse<{ del
   return res.json();
 }
 
+// AI Pilot features
+export async function reloadWiki(storeId: string): Promise<ApiResponse<{ status: string; wiki_version?: string }>> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/wiki/reload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ store_id: storeId })
+  });
+  return res.json();
+}
+
+export async function getAIUsage(storeId: string): Promise<ApiResponse<{
+  year_month: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_eur: number;
+}>> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/usage?store_id=${storeId}`);
+  return res.json();
+}
+
 // Session Status
 export async function updateSessionStatus(sessionId: string, status: 'serving' | 'finished' | 'missed'): Promise<ApiResponse<{
   session_id: string;
