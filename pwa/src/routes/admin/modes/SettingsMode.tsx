@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { StoreSettings } from '@/types/admin';
-import { ToggleLeft, ToggleRight, Save, Clock, MessageSquare, Sliders } from 'lucide-react';
+import { ToggleRight, Save, Clock, MessageSquare, Sliders, Brain } from 'lucide-react';
+import { WikiReloadCard } from '@/components/admin/WikiReloadCard';
+import { AIUsageCard } from '@/components/admin/AIUsageCard';
 
 interface SettingsModeProps {
   settings: StoreSettings;
   onUpdate: (settings: StoreSettings) => void;
+  storeId: string;
 }
 
-export const SettingsMode: React.FC<SettingsModeProps> = ({ settings, onUpdate }) => {
+export const SettingsMode: React.FC<SettingsModeProps> = ({ settings, onUpdate, storeId }) => {
   const [localSettings, setLocalSettings] = useState(settings);
 
   const toggleAccepting = () => {
@@ -142,7 +145,19 @@ export const SettingsMode: React.FC<SettingsModeProps> = ({ settings, onUpdate }
          </div>
       </div>
 
-      {/* 3. Footer Action */}
+      {/* 3. AI / Pilot Section */}
+      <div className="shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <Brain size={16} className="text-teal-400" />
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">AI Concierge</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-5">
+          <WikiReloadCard storeId={storeId} />
+          <AIUsageCard storeId={storeId} />
+        </div>
+      </div>
+
+      {/* 4. Footer Action */}
       <div className="flex justify-end pt-2 shrink-0">
          <button onClick={handleSave} className="bg-teal-400 text-slate-900 px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-teal-300 transition-colors shadow-lg shadow-teal-400/20 text-base">
             <Save size={18} /> Save Changes

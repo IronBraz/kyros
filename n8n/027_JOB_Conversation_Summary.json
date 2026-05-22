@@ -1,0 +1,225 @@
+{
+  "id": "pg8YPQA1zvZr2liL",
+  "name": "Kyros - JOB_Conversation_Summary",
+  "nodes": [
+    {
+      "id": "a0d1dbcf-4838-4877-a163-d4999164a5c7",
+      "name": "POST /internal/ai/summarize",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 192],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "internal/ai/summarize",
+        "authentication": "none",
+        "responseMode": "onReceived",
+        "options": { "noResponseBody": true }
+      },
+      "webhookId": "c866b907-2c42-4a80-a335-4e661b01c933"
+    },
+    {
+      "id": "4313fc07-eece-4009-ba71-cdd0b8c276c6",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [224, 192],
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { \"conversation_id\": $json.body.conversation_id } }}"
+      }
+    },
+    {
+      "id": "cdf04805-fa6f-414d-af9c-6fd090e3f60b",
+      "name": "Count Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [448, 192],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT $1::text as conversation_id, COUNT(*)::int as message_count FROM ai_messages WHERE conversation_id = $1::uuid",
+        "options": { "queryReplacement": "={{ $json.conversation_id }}" }
+      }
+    },
+    {
+      "id": "a12f88fb-6adf-4321-9f31-cb894286c3c5",
+      "name": "Has Messages?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [672, 192],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [{ "leftValue": "={{ $json.message_count }}", "operator": { "type": "number", "operation": "gt" }, "rightValue": 0 }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a94c5493-990f-44f5-8c68-54b2595af12f",
+      "name": "Fetch Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [896, 96],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT role, content FROM ai_messages WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 30",
+        "options": { "queryReplacement": "={{ $json.conversation_id }}" }
+      }
+    },
+    {
+      "id": "663b0e7c-38c8-4fe1-9baa-a693356f3ec2",
+      "name": "Aggregate Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 96],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst convId = $(\"Count Messages\").first().json.conversation_id;\nconst conversation = items.map(i => i.json.role.toUpperCase() + ': ' + i.json.content).join('\\n\\n');\nreturn [{ json: { conversation_id: convId, prompt: conversation } }];"
+      }
+    },
+    {
+      "id": "9eebba53-fd5a-48eb-9a62-dce0fef2ffdf",
+      "name": "Insert Placeholder",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1344, 96],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_summaries (conversation_id, summary, sentiment, flags, status) VALUES ($1::uuid, '', 0, '[]'::jsonb, 'generating') ON CONFLICT (conversation_id) DO NOTHING",
+        "options": { "queryReplacement": "={{ $json.conversation_id }}" }
+      }
+    },
+    {
+      "id": "90a76854-a040-4269-b93a-30cbd3be2944",
+      "name": "Budget Check",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [1568, 96],
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "fnhGqwarmYKLHLaW" },
+        "mode": "once",
+        "options": { "waitForSubWorkflow": true }
+      }
+    },
+    {
+      "id": "3e88c74a-28e0-4d83-a166-a4c2d8bfbd08",
+      "name": "Budget OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1792, 96],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.within_budget }}", "operator": { "type": "boolean", "operation": "true" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "867e99f4-47c4-452f-8fb6-f19346be8bf1",
+      "name": "Call OpenRouter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2016, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openRouterApi",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": $env.KYROS_AI_MODEL || \"anthropic/claude-haiku-4-5\", \"messages\": [{ \"role\": \"system\", \"content\": \"You are a concierge context analyzer. Given a conversation between a customer and an AI concierge, output valid JSON only — no explanation, no markdown. Schema: {\\\"summary\\\": \\\"string max 200 chars\\\", \\\"sentiment\\\": -1|0|1, \\\"flags\\\": [\\\"string\\\"]}. sentiment: -1=frustrated, 0=neutral, 1=satisfied. flags: 1-3 topic tags e.g. return-issue, product-inquiry, complaint.\" }, { \"role\": \"user\", \"content\": \"Summarize this conversation:\\n\\n\" + $(\"Aggregate Messages\").first().json.prompt }], \"response_format\": { \"type\": \"json_object\" }, \"max_tokens\": 300 } }}"
+      }
+    },
+    {
+      "id": "edc128ff-f0ab-4c23-a7f4-6b27b7c29252",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2240, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const response = $input.first().json;\nconst convId = $(\"Aggregate Messages\").first().json.conversation_id;\nconst inputTokens = response.usage?.prompt_tokens || 0;\nconst outputTokens = response.usage?.completion_tokens || 0;\nlet summary = '', sentiment = 0, flags = [], status = 'ready';\ntry {\n  const content = response.choices[0].message.content;\n  const parsed = JSON.parse(content);\n  summary = String(parsed.summary || '').slice(0, 200);\n  if ([-1, 0, 1].includes(Number(parsed.sentiment))) sentiment = Number(parsed.sentiment);\n  if (Array.isArray(parsed.flags)) flags = parsed.flags.slice(0, 5).map(f => String(f));\n} catch(e) { status = 'error'; }\nreturn [{ json: { conversation_id: convId, summary, sentiment, flags: JSON.stringify(flags), status, input_tokens: inputTokens, output_tokens: outputTokens } }];"
+      }
+    },
+    {
+      "id": "32e2b005-9b61-4f4b-ba17-b3d75e55a2c5",
+      "name": "Update Summary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2464, 0],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ai_summaries SET summary = $2, sentiment = $3::int, flags = $4::jsonb, status = $5, generated_at = NOW() WHERE conversation_id = $1::uuid RETURNING conversation_id",
+        "options": { "queryReplacement": "={{ $json.conversation_id }},={{ $json.summary }},={{ $json.sentiment }},={{ $json.flags }},={{ $json.status }}" }
+      }
+    },
+    {
+      "id": "78da3257-2a72-4c17-864e-121e6a1563a0",
+      "name": "Update AI Usage",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2688, 0],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_usage_monthly (year_month, total_input_tokens, total_output_tokens, total_cost_eur) VALUES (TO_CHAR(NOW(), 'YYYY-MM'), $1::bigint, $2::bigint, ($1::numeric * 0.80 / 1000000 + $2::numeric * 4.00 / 1000000) * 0.92) ON CONFLICT (year_month) DO UPDATE SET total_input_tokens = ai_usage_monthly.total_input_tokens + $1::bigint, total_output_tokens = ai_usage_monthly.total_output_tokens + $2::bigint, total_cost_eur = ai_usage_monthly.total_cost_eur + ($1::numeric * 0.80 / 1000000 + $2::numeric * 4.00 / 1000000) * 0.92",
+        "options": { "queryReplacement": "={{ $(\"Parse AI Response\").first().json.input_tokens }},={{ $(\"Parse AI Response\").first().json.output_tokens }}" }
+      }
+    },
+    {
+      "id": "f5239b54-71ed-4a76-97f8-390278a2ddc1",
+      "name": "Update Status Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2016, 192],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ai_summaries SET status = 'error' WHERE conversation_id = $1::uuid",
+        "options": { "queryReplacement": "={{ $(\"Aggregate Messages\").first().json.conversation_id }}" }
+      }
+    },
+    {
+      "id": "e15248d1-4e15-4f3c-843b-4945145ac5a2",
+      "name": "Insert No Conversation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [896, 288],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_summaries (conversation_id, summary, sentiment, flags, status, generated_at) VALUES ($1::uuid, 'No conversation', 0, '[]'::jsonb, 'ready', NOW()) ON CONFLICT (conversation_id) DO UPDATE SET summary = 'No conversation', sentiment = 0, flags = '[]'::jsonb, status = 'ready', generated_at = NOW()",
+        "options": { "queryReplacement": "={{ $json.conversation_id }}" }
+      }
+    }
+  ],
+  "connections": {
+    "POST /internal/ai/summarize": { "main": [[{ "node": "Extract Input", "type": "main", "index": 0 }]] },
+    "Extract Input": { "main": [[{ "node": "Count Messages", "type": "main", "index": 0 }]] },
+    "Count Messages": { "main": [[{ "node": "Has Messages?", "type": "main", "index": 0 }]] },
+    "Has Messages?": {
+      "main": [
+        [{ "node": "Fetch Messages", "type": "main", "index": 0 }],
+        [{ "node": "Insert No Conversation", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Messages": { "main": [[{ "node": "Aggregate Messages", "type": "main", "index": 0 }]] },
+    "Aggregate Messages": { "main": [[{ "node": "Insert Placeholder", "type": "main", "index": 0 }]] },
+    "Insert Placeholder": { "main": [[{ "node": "Budget Check", "type": "main", "index": 0 }]] },
+    "Budget Check": { "main": [[{ "node": "Budget OK?", "type": "main", "index": 0 }]] },
+    "Budget OK?": {
+      "main": [
+        [{ "node": "Call OpenRouter", "type": "main", "index": 0 }],
+        [{ "node": "Update Status Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call OpenRouter": { "main": [[{ "node": "Parse AI Response", "type": "main", "index": 0 }]] },
+    "Parse AI Response": { "main": [[{ "node": "Update Summary", "type": "main", "index": 0 }]] },
+    "Update Summary": { "main": [[{ "node": "Update AI Usage", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "availableInMCP": true }
+}

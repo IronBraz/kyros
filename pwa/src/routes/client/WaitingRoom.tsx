@@ -2,19 +2,33 @@ import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, BellRing } from 'lucide-react';
 import { useSessionStore } from '@/store/useSessionStore';
+import { useChatStore } from '@/store/useChatStore';
 import { getSession, abandonSession, getMarketingCards, sendHeartbeat } from '@/lib/api/client';
 import { Button } from '@/components/shared/Button';
 import { MarketingCard } from '@/components/shared/MarketingCard';
+import { ChatPanel } from '@/components/chat/ChatPanel';
 import { unlockAudio, playNotificationSound } from '@/lib/audioManager';
 
 export const WaitingRoom: React.FC = () => {
   const navigate = useNavigate();
   const [audioEnabled, setAudioEnabled] = useState(false);
+  const [isCalled, setIsCalled] = useState(false);
+  const navigatingRef = useRef(false);
+
   const {
     sessionId, ticketCode, position, estimatedWaitMinutes,
-    marketingCards, storeId, storeName,
+    marketingCards, storeId, storeName, assignedDesk, aiConversationId,
     setMarketingCards, updateQueuePosition, setStatus, clearSession, setAssignedDesk
   } = useSessionStore();
+
+  const { conversationId, setConversationId, reset: resetChat } = useChatStore();
+
+  // Restore conversation on refresh if session store has a persisted conversation id
+  useEffect(() => {
+    if (aiConversationId && !conversationId) {
+      setConversationId(aiConversationId);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle audio enable button click
   const handleEnableAudio = async () => {
@@ -40,11 +54,13 @@ export const WaitingRoom: React.FC = () => {
           updateQueuePosition(data.position, data.estimated_wait_minutes || data.position * 5);
         }
 
-        // Check if called or serving
-        if (data.status === 'called' || data.status === 'serving') {
+        // Check if called or serving — delay navigation so ChatPanel can show handover message
+        if ((data.status === 'called' || data.status === 'serving') && !navigatingRef.current) {
+          navigatingRef.current = true;
           setAssignedDesk(data.service_point_name || 'Cassa A');
           setStatus('called');
-          navigate('/your-turn');
+          setIsCalled(true);
+          setTimeout(() => navigate('/your-turn'), 1500);
         } else if (data.status === 'finished' || data.status === 'abandoned' || data.status === 'missed') {
           // Session ended (completed, user left, or missed their turn)
           clearSession();
@@ -104,10 +120,9 @@ export const WaitingRoom: React.FC = () => {
           console.error('Failed to abandon session:', e);
         }
       }
+      resetChat();
       clearSession();
-      // Set flag to prevent auto-rejoin when landing page loads
       sessionStorage.setItem('kyros_just_left', 'true');
-      // Navigate to landing page
       navigate('/');
     }
   };
@@ -200,6 +215,15 @@ export const WaitingRoom: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* AI Concierge Chat */}
+      {sessionId && (
+        <ChatPanel
+          sessionId={sessionId}
+          isCalled={isCalled}
+          assignedDesk={assignedDesk}
+        />
+      )}
     </div>
   );
 };

@@ -82,12 +82,16 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
       loadSettings();
       loadQueueStatus();
       loadMarketingCards();
-
-      // Poll queue status every 5 seconds
-      const interval = setInterval(loadQueueStatus, 5000);
-      return () => clearInterval(interval);
     }
   }, [storeId]);
+
+  // Adaptive polling: 2s when a customer is called (watching for AI summary), 5s otherwise
+  const hasCalled = customers.some(c => c.status === 'called');
+  useEffect(() => {
+    if (!storeId) return;
+    const interval = setInterval(loadQueueStatus, hasCalled ? 2000 : 5000);
+    return () => clearInterval(interval);
+  }, [storeId, hasCalled]);
 
   const loadEntryPoints = async () => {
     try {
@@ -158,7 +162,8 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
             position: 0,
             joinTime: s.created_at || '',
             calledAt: s.called_at,
-            entryPointName: s.entry_point_name
+            entryPointName: s.entry_point_name,
+            ai_summary: s.ai_summary,
           });
         });
 
@@ -457,7 +462,7 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
       {currentView === 'analytics' && <AnalyticsMode stats={stats} />}
       {currentView === 'zones' && <ZonesMode entryPoints={entryPoints} onDelete={handleDeleteZone} onCreate={handleCreateZone} />}
       {currentView === 'content' && <ContentMode cards={marketingCards} onCreate={handleCreateCard} onUpdate={handleUpdateCard} onDelete={handleDeleteCard} />}
-      {currentView === 'settings' && <SettingsMode settings={settings} onUpdate={handleUpdateSettings} />}
+      {currentView === 'settings' && <SettingsMode settings={settings} onUpdate={handleUpdateSettings} storeId={storeId} />}
     </Layout>
   );
 };

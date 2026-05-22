@@ -145,6 +145,39 @@
       "typeVersion": 1.4
     },
     {
+      "id": "get-session-ai-conv",
+      "name": "Get Session AI Conv",
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ $('Call Next FIFO').item.json.id }}"
+        },
+        "query": "SELECT ai_conversation_id::text FROM sessions WHERE id = $1::uuid AND ai_conversation_id IS NOT NULL;"
+      },
+      "position": [2250, 200],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "id": "trigger-summarize",
+      "name": "Trigger Summarize",
+      "parameters": {
+        "method": "POST",
+        "url": "https://mind.neuroforge.club/webhook/internal/ai/summarize",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"conversation_id\": $json.ai_conversation_id } }}",
+        "options": {
+          "timeout": 3000,
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "position": [2500, 200],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
       "id": "error-empty",
       "name": "Error No Customers",
       "parameters": {
@@ -237,6 +270,20 @@
       "main": [[{
         "index": 0,
         "node": "Respond 200",
+        "type": "main"
+      }]]
+    },
+    "Respond 200": {
+      "main": [[{
+        "index": 0,
+        "node": "Get Session AI Conv",
+        "type": "main"
+      }]]
+    },
+    "Get Session AI Conv": {
+      "main": [[{
+        "index": 0,
+        "node": "Trigger Summarize",
         "type": "main"
       }]]
     }
