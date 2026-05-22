@@ -66,6 +66,7 @@ const App: React.FC = () => {
       <Routes>
         {/* Client Routes (Public) */}
         <Route path="/" element={<LandingPage />} />
+        <Route path="/q/:entrySlug" element={<LandingPage />} />
         <Route path="/thank-you" element={<ThankYou />} />
 
         {/* Client Protected Routes */}

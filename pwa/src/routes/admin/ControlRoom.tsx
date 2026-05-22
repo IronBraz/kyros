@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Customer, StoreSettings, ViewMode, EntryPoint, MarketingCard, QueueStats } from '@/types/admin';
 import { Layout } from './Layout';
@@ -48,9 +48,15 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
   const [storeId, setStoreId] = useState<string>('');
   const [storeName, setStoreName] = useState<string>('');
 
+  // Refs for preventing concurrent fetches / double-clicks
+  const isLoadingQueueRef = useRef(false);
+  const isCallingRef = useRef(false);
+
   // App State
   const [currentView, setCurrentView] = useState<ViewMode>(mode);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [servedHistory, setServedHistory] = useState<Customer[]>([]);
+  const [isCalling, setIsCalling] = useState(false);
   const [settings, setSettings] = useState<StoreSettings>(INITIAL_SETTINGS);
   const [stats, setStats] = useState(INITIAL_STATS);
   const [entryPoints, setEntryPoints] = useState<EntryPoint[]>([]);
@@ -133,6 +139,8 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
   };
 
   const loadQueueStatus = async () => {
+    if (isLoadingQueueRef.current) return;
+    isLoadingQueueRef.current = true;
     try {
       const response = await getQueueStatus(storeId);
       if (response.success && response.data) {
@@ -202,6 +210,8 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
       }
     } catch (e) {
       console.error('Failed to load queue status:', e);
+    } finally {
+      isLoadingQueueRef.current = false;
     }
   };
 
@@ -229,7 +239,10 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
 
   // Derived State
   const waitingCustomers = customers.filter(c => c.status === 'waiting').sort((a, b) => a.position - b.position);
-  const calledCustomers = customers.filter(c => c.status === 'called' || c.status === 'served').sort((a, b) => new Date(b.calledAt || '').getTime() - new Date(a.calledAt || '').getTime());
+  const calledCustomers = [
+    ...customers.filter(c => c.status === 'called' || c.status === 'served'),
+    ...servedHistory.filter(h => !customers.some(c => c.id === h.id))
+  ].sort((a, b) => new Date(b.calledAt || '').getTime() - new Date(a.calledAt || '').getTime());
   const missedCustomers = customers.filter(c => c.status === 'missed').sort((a, b) => new Date(b.missedAt || '').getTime() - new Date(a.missedAt || '').getTime());
 
   // Actions
@@ -239,18 +252,22 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
   };
 
   const callNext = useCallback(async () => {
-    if (waitingCustomers.length === 0) return;
-
+    if (waitingCustomers.length === 0 || isCallingRef.current) return;
+    isCallingRef.current = true;
+    setIsCalling(true);
+    isLoadingQueueRef.current = false; // allow the post-call refresh through
     try {
       const response = await callNextCustomer(storeId);
       if (response.success) {
-        // Refresh queue status immediately
         await loadQueueStatus();
       } else {
         console.error('Failed to call next:', response.error);
       }
     } catch (e) {
       console.error('Failed to call next:', e);
+    } finally {
+      isCallingRef.current = false;
+      setIsCalling(false);
     }
   }, [waitingCustomers, storeId]);
 
@@ -430,10 +447,15 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
           called={calledCustomers}
           missed={missedCustomers}
           onCallNext={callNext}
+          isCallingNext={isCalling}
           onRecall={(id) => {
             setCustomers(prev => prev.map(c => c.id === id ? { ...c, status: 'waiting', position: 0 } : c));
           }}
           onMarkServed={async (id) => {
+            const customer = customers.find(c => c.id === id);
+            if (customer) {
+              setServedHistory(prev => [{ ...customer, status: 'served' as const }, ...prev].slice(0, 5));
+            }
             try {
               const response = await updateSessionStatus(id, 'finished');
               if (response.success) {
