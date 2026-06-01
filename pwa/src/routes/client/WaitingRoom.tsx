@@ -4,7 +4,6 @@ import { Bell, BellRing } from 'lucide-react';
 import { useSessionStore } from '@/store/useSessionStore';
 import { useChatStore } from '@/store/useChatStore';
 import { getSession, abandonSession, getMarketingCards, sendHeartbeat } from '@/lib/api/client';
-import { Button } from '@/components/shared/Button';
 import { MarketingCard } from '@/components/shared/MarketingCard';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { unlockAudio, playNotificationSound } from '@/lib/audioManager';
@@ -161,10 +160,9 @@ export const WaitingRoom: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-slate-900/90 backdrop-blur-md border-b border-white/5 px-6 py-4 flex justify-between items-center">
-        <span className="text-xs font-bold text-slate-500 tracking-wider">YOUR TICKET</span>
-        <button onClick={handleLeaveQueue} className="text-xs text-slate-500 hover:text-red-400">
-          Leave Queue ✕
+      <div className="sticky top-0 z-10 bg-slate-900/90 backdrop-blur-md border-b border-white/5 px-6 py-3 flex items-center justify-center">
+        <button onClick={handleLeaveQueue} className="text-xs text-slate-600 hover:text-slate-400 transition-colors tracking-widest uppercase">
+          leave queue
         </button>
       </div>
 
@@ -236,15 +234,6 @@ export const WaitingRoom: React.FC = () => {
             <MarketingCard key={card.id} {...card} />
           ))
         )}
-      </div>
-
-      {/* Footer Actions */}
-      <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-slate-900 via-slate-900 to-transparent pointer-events-none">
-        <div className="pointer-events-auto">
-          <Button variant="ghost" onClick={handleLeaveQueue}>
-            LEAVE QUEUE
-          </Button>
-        </div>
       </div>
 
       {/* AI Concierge Chat */}

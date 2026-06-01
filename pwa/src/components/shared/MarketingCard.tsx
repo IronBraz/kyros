@@ -21,10 +21,10 @@ const themeStyles: Record<string, { bg: string; border: string; accent: string; 
     badge: 'bg-amber-500/40 text-slate-900 font-bold'
   },
   blue: {
-    bg: 'bg-gradient-to-br from-blue-500/15 to-cyan-500/10',
-    border: 'border-blue-500/40',
-    accent: 'text-blue-400',
-    badge: 'bg-blue-500/40 text-slate-900 font-bold'
+    bg: 'bg-gradient-to-br from-teal-500/10 to-teal-400/5',
+    border: 'border-teal-500/25',
+    accent: 'text-teal-400',
+    badge: 'bg-teal-500/20 text-teal-200 font-bold'
   },
   green: {
     bg: 'bg-gradient-to-br from-emerald-500/15 to-teal-500/10',
