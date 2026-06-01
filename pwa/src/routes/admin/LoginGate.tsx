@@ -36,9 +36,9 @@ export const LoginGate: React.FC = () => {
   }, []);
 
   const handleDigit = (digit: string) => {
+    setError(false);
     if (pin.length < 4) {
       setPin((prev) => prev + digit);
-      setError(false);
     }
   };
 

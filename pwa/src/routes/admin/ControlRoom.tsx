@@ -52,6 +52,8 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
   const isLoadingQueueRef = useRef(false);
   const isCallingRef = useRef(false);
 
+  const [backendOffline, setBackendOffline] = useState(false);
+
   // App State
   const [currentView, setCurrentView] = useState<ViewMode>(mode);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -62,19 +64,27 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
   const [entryPoints, setEntryPoints] = useState<EntryPoint[]>([]);
   const [marketingCards, setMarketingCards] = useState<MarketingCard[]>([]);
 
-  // Load storeId and storeName from localStorage on mount
+  // Load storeId and storeName from localStorage on mount; redirect if session expired
   useEffect(() => {
     const savedSession = localStorage.getItem('kyros_admin_session');
-    if (savedSession) {
-      try {
-        const session = JSON.parse(savedSession);
-        setStoreId(session.store_id);
-        setStoreName(session.store_name);
-      } catch (e) {
-        console.error('Failed to load admin session:', e);
-      }
+    if (!savedSession) {
+      navigate('/control-room/login');
+      return;
     }
-  }, []);
+    try {
+      const session = JSON.parse(savedSession);
+      if (session.expires_at && new Date(session.expires_at) < new Date()) {
+        localStorage.removeItem('kyros_admin_session');
+        navigate('/control-room/login');
+        return;
+      }
+      setStoreId(session.store_id);
+      setStoreName(session.store_name);
+    } catch (e) {
+      console.error('Failed to load admin session:', e);
+      navigate('/control-room/login');
+    }
+  }, [navigate]);
 
   // Sync currentView with mode prop from routing
   useEffect(() => {
@@ -189,6 +199,7 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
           });
         });
 
+        setBackendOffline(false);
         setCustomers(allCustomers);
 
         // Update stats from real API data
@@ -210,6 +221,7 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
       }
     } catch (e) {
       console.error('Failed to load queue status:', e);
+      setBackendOffline(true);
     } finally {
       isLoadingQueueRef.current = false;
     }
@@ -433,6 +445,12 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
   };
 
   return (
+    <>
+    {backendOffline && (
+      <div className="fixed top-0 left-0 right-0 z-50 bg-red-500/90 backdrop-blur-sm text-white text-sm text-center py-2 px-4">
+        Backend offline — queue updates paused
+      </div>
+    )}
     <Layout
       currentView={currentView}
       onNavigate={handleNavigate}
@@ -486,5 +504,6 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
       {currentView === 'content' && <ContentMode cards={marketingCards} onCreate={handleCreateCard} onUpdate={handleUpdateCard} onDelete={handleDeleteCard} />}
       {currentView === 'settings' && <SettingsMode settings={settings} onUpdate={handleUpdateSettings} storeId={storeId} />}
     </Layout>
+    </>
   );
 };

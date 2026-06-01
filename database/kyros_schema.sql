@@ -190,3 +190,66 @@ CREATE INDEX IF NOT EXISTS idx_marketing_global ON marketing_cards(tenant_id, sc
 
 -- Ticket Sequences: Lookup per store
 CREATE INDEX IF NOT EXISTS idx_ticket_seq_store ON ticket_sequences(store_id);
+
+-- 5D. AI TABLES (Pilot Phase)
+-- Incorporated from database/migrations/2026_05_pilot_ai.sql on 2026-06-01
+
+CREATE TABLE IF NOT EXISTS ai_conversations (
+    id              UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
+    session_id      UUID        UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+    started_at      TIMESTAMPTZ,
+    ended_at        TIMESTAMPTZ,
+    wiki_version    VARCHAR(20),
+    message_count   INT         DEFAULT 0,
+    last_message_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id              UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
+    conversation_id UUID        NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+    role            VARCHAR(10) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+    content         TEXT        NOT NULL,
+    tokens_in       INT,
+    tokens_out      INT,
+    model           VARCHAR(40),
+    latency_ms      INT,
+    flags           JSONB       DEFAULT '{}',
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ai_summaries (
+    id              UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
+    conversation_id UUID        UNIQUE REFERENCES ai_conversations(id) ON DELETE CASCADE,
+    summary         TEXT,
+    sentiment       SMALLINT    CHECK (sentiment IN (-1, 0, 1)),
+    flags           JSONB       DEFAULT '[]',
+    model           VARCHAR(40),
+    status          VARCHAR(20) DEFAULT 'pending'
+                                CHECK (status IN ('pending', 'generating', 'ready', 'error')),
+    generated_at    TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS ai_usage_monthly (
+    id                   UUID         PRIMARY KEY DEFAULT uuid_generate_v7(),
+    year_month           CHAR(7)      NOT NULL UNIQUE,
+    total_input_tokens   BIGINT       NOT NULL DEFAULT 0,
+    total_output_tokens  BIGINT       NOT NULL DEFAULT 0,
+    total_cost_eur       NUMERIC(8,4) NOT NULL DEFAULT 0,
+    last_updated         TIMESTAMPTZ  DEFAULT NOW()
+);
+
+-- Bidirectional 1:1 link between sessions and ai_conversations
+ALTER TABLE sessions
+    ADD COLUMN IF NOT EXISTS ai_conversation_id UUID UNIQUE REFERENCES ai_conversations(id);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_conv
+    ON ai_messages(conversation_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ai_summaries_status
+    ON ai_summaries(status)
+    WHERE status IN ('pending', 'generating');
+
+-- Seed current month budget row
+INSERT INTO ai_usage_monthly (year_month)
+VALUES (TO_CHAR(NOW(), 'YYYY-MM'))
+ON CONFLICT (year_month) DO NOTHING;

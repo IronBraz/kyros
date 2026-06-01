@@ -18,9 +18,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Backend**: n8n workflows (self-hosted, Docker-based)
 - **Database**: PostgreSQL 18.1 (UUIDv7, JSONB for flexible config)
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS + Zustand
-- **Real-time**: Socket.io
+- **Real-time**: Socket.io (backend emitter ready; frontend subscriber NOT yet implemented — client uses HTTP polling as of 2026-06-01)
 - **Proxy**: Caddy (reverse proxy, HTTPS, static assets)
-- **Infrastructure**: NeuroForge Docker Compose stack on Linux VPS
+- **Infrastructure**: NeuroForge Docker Compose stack on **Local PC**, exposed via **Cloudflare Tunnel** (see `specs/10_Deployment_Operations.md`). NOT a Linux VPS in Phase 1.
 
 ### Key Architecture Decisions
 - **Multi-tenancy**: Shared database, shared schema (tenant_id/store_id columns)

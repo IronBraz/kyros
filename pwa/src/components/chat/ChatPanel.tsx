@@ -20,6 +20,7 @@ export const ChatPanel: React.FC<Props> = ({ sessionId, isCalled, assignedDesk }
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const handoverShownRef = useRef(false);
 
   const {
     conversationId, messages, sending, capped, error,
@@ -39,7 +40,8 @@ export const ChatPanel: React.FC<Props> = ({ sessionId, isCalled, assignedDesk }
 
   // Handle ticket called — show handover message then navigate
   useEffect(() => {
-    if (!isCalled || !open) return;
+    if (!isCalled || !open || handoverShownRef.current) return;
+    handoverShownRef.current = true;
     abortPending();
     const desk = assignedDesk || 'the desk';
     addMessage({
@@ -49,10 +51,10 @@ export const ChatPanel: React.FC<Props> = ({ sessionId, isCalled, assignedDesk }
       timestamp: Date.now(),
       isHandover: true,
     });
-  }, [isCalled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isCalled, open, assignedDesk, abortPending, addMessage]);
 
-  // Reset on unmount
-  useEffect(() => () => { abortPending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Abort in-flight requests on unmount
+  useEffect(() => () => { abortPending(); }, [abortPending]);
 
   const openPanel = async () => {
     setOpen(true);
@@ -74,7 +76,10 @@ export const ChatPanel: React.FC<Props> = ({ sessionId, isCalled, assignedDesk }
     }
   };
 
-  const closePanel = () => setOpen(false);
+  const closePanel = () => {
+    abortPending();
+    setOpen(false);
+  };
 
   const handleSend = useCallback(async (text: string) => {
     if (!conversationId || capped || isCalled) return;
@@ -90,6 +95,7 @@ export const ChatPanel: React.FC<Props> = ({ sessionId, isCalled, assignedDesk }
     setError(null);
 
     const ac = new AbortController();
+    const timeoutId = setTimeout(() => ac.abort(), 15000);
     setAbortController(ac);
 
     try {
@@ -117,6 +123,7 @@ export const ChatPanel: React.FC<Props> = ({ sessionId, isCalled, assignedDesk }
         setError('Our concierge is briefly unavailable — please try again in a moment.');
       }
     } finally {
+      clearTimeout(timeoutId);
       setSending(false);
       setAbortController(null);
     }

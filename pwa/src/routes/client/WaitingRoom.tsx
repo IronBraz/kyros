@@ -13,6 +13,7 @@ export const WaitingRoom: React.FC = () => {
   const navigate = useNavigate();
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isCalled, setIsCalled] = useState(false);
+  const [networkError, setNetworkError] = useState(false);
   const navigatingRef = useRef(false);
 
   const {
@@ -23,12 +24,15 @@ export const WaitingRoom: React.FC = () => {
 
   const { conversationId, setConversationId, reset: resetChat } = useChatStore();
 
+  // Capture mount-time values so the restore runs only once on mount
+  const initAiConvId = useRef(aiConversationId);
+
   // Restore conversation on refresh if session store has a persisted conversation id
   useEffect(() => {
-    if (aiConversationId && !conversationId) {
-      setConversationId(aiConversationId);
+    if (initAiConvId.current && !conversationId) {
+      setConversationId(initAiConvId.current);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setConversationId]); // conversationId checked via mount-time ref, intentionally runs once
 
   // Handle audio enable button click
   const handleEnableAudio = async () => {
@@ -47,6 +51,7 @@ export const WaitingRoom: React.FC = () => {
     try {
       const response = await getSession(sessionId);
       if (response.success && response.data) {
+        setNetworkError(false);
         const data = response.data;
 
         // Update position and wait time from API
@@ -68,25 +73,32 @@ export const WaitingRoom: React.FC = () => {
           sessionStorage.setItem('kyros_just_left', 'true');
           navigate('/');
         }
+      } else {
+        setNetworkError(true);
       }
     } catch (e) {
       console.error('Failed to poll session:', e);
+      setNetworkError(true);
     }
-  }, [sessionId, updateQueuePosition, setAssignedDesk, setStatus, clearSession, navigate]);
+  }, [sessionId, updateQueuePosition, setAssignedDesk, setStatus, clearSession, navigate, setNetworkError]);
 
-  // Heartbeat to keep session alive
+  // Heartbeat to keep session alive, resumes immediately when tab regains focus
   useEffect(() => {
     if (!sessionId) return;
-    
-    // Initial heartbeat
-    sendHeartbeat(sessionId).catch(e => console.error('Heartbeat error:', e));
-    
-    // Send heartbeat every 30 seconds
-    const heartbeatInterval = setInterval(() => {
-      sendHeartbeat(sessionId).catch(e => console.error('Heartbeat error:', e));
-    }, 30000);
-    
-    return () => clearInterval(heartbeatInterval);
+
+    const beat = () => sendHeartbeat(sessionId).catch(e => console.error('Heartbeat error:', e));
+    beat();
+    const id = setInterval(beat, 30000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') beat();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [sessionId]);
 
   useEffect(() => {
@@ -104,11 +116,23 @@ export const WaitingRoom: React.FC = () => {
       }).catch(e => console.error('Failed to load cards:', e));
     }
 
-    // Poll session status every 3 seconds
-    pollSessionStatus(); // Initial poll
-    const interval = setInterval(pollSessionStatus, 3000);
+    // Recursive setTimeout: next poll starts only after current one finishes
+    let active = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
-    return () => clearInterval(interval);
+    const runPoll = async () => {
+      await pollSessionStatus();
+      if (active) {
+        timeoutId = setTimeout(runPoll, 3000);
+      }
+    };
+
+    runPoll();
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
   }, [sessionId, storeId, marketingCards.length, pollSessionStatus, navigate, setMarketingCards]);
 
   const handleLeaveQueue = async () => {
@@ -129,6 +153,13 @@ export const WaitingRoom: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 pb-24">
+      {/* Network error banner */}
+      {networkError && (
+        <div className="sticky top-0 z-20 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-amber-400 text-xs">
+          Connection lost — retrying…
+        </div>
+      )}
+
       {/* Header */}
       <div className="sticky top-0 z-10 bg-slate-900/90 backdrop-blur-md border-b border-white/5 px-6 py-4 flex justify-between items-center">
         <span className="text-xs font-bold text-slate-500 tracking-wider">YOUR TICKET</span>

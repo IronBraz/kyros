@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Zap, TrendingUp } from 'lucide-react';
 import { getAIUsage } from '@/lib/api/admin';
 import { AIUsage } from '@/types/admin';
@@ -14,7 +14,7 @@ export const AIUsageCard: React.FC<Props> = ({ storeId }) => {
   const [usage, setUsage] = useState<AIUsage | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUsage = async () => {
+  const fetchUsage = useCallback(async () => {
     try {
       const res = await getAIUsage(storeId);
       if (res.success && res.data) {
@@ -30,13 +30,13 @@ export const AIUsageCard: React.FC<Props> = ({ storeId }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [storeId]);
 
   useEffect(() => {
     fetchUsage();
     const interval = setInterval(fetchUsage, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [storeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchUsage]);
 
   const costEur = usage?.total_cost_eur ?? 0;
   const pct = Math.min((costEur / BUDGET_EUR) * 100, 100);

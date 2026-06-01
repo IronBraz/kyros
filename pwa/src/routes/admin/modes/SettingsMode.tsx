@@ -23,7 +23,7 @@ export const SettingsMode: React.FC<SettingsModeProps> = ({ settings, onUpdate, 
   };
 
   return (
-    <div className="h-full flex flex-col gap-5">
+    <div className="flex flex-col gap-5">
       
       {/* 1. Header & Queue Status (Top Bar) */}
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-sm shrink-0 flex items-center justify-between">
@@ -52,10 +52,10 @@ export const SettingsMode: React.FC<SettingsModeProps> = ({ settings, onUpdate, 
       </div>
 
       {/* 2. Main Grid Content */}
-      <div className="grid grid-cols-2 gap-5 min-h-0 flex-1">
+      <div className="grid grid-cols-2 gap-5">
          
          {/* Left Column: Technical Params */}
-         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-sm flex flex-col gap-6 overflow-y-auto">
+         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-sm flex flex-col gap-6">
             <div className="flex items-center gap-2 border-b border-slate-700 pb-3 mb-2">
                 <Sliders size={20} className="text-teal-400" />
                 <h3 className="text-lg font-serif font-bold text-slate-50">Configuration</h3>

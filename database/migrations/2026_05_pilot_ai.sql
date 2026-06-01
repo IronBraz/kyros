@@ -1,8 +1,12 @@
 -- ============================================================
 -- Kyros Pilot AI Tables Migration
 -- File: database/migrations/2026_05_pilot_ai.sql
--- Apply: psql -U <user> -d kyros_db -f database/migrations/2026_05_pilot_ai.sql
 -- Phase: Pilot (AI Chat Concierge)
+--
+-- NOTA 2026-06-01: Questo contenuto è stato incorporato in
+-- database/kyros_schema.sql (sezione 5D). Non riapplicare su
+-- un DB fresco — usa solo kyros_schema.sql come source of truth.
+-- Questo file è mantenuto come reference storica.
 -- ============================================================
 
 -- 1. AI Conversations (one per queue session that uses AI chat)

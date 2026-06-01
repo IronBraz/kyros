@@ -57,3 +57,41 @@ Questo file tiene traccia di tutte le modifiche rilevanti apportate al progetto,
 - **Mark Served**: Verificato funzionamento corretto del workflow UpdateSessionStatus (SQL fix applicato).
 - **Client polling**: Deployata nuova build FRONT con polling attivo per navigazione a "Your Turn".
 
+## [1.3.0] - 2026-05-22 - Pilot Phase (AI Chat Concierge)
+### Added
+- **Repo bootstrap (2026-05-15)**: Initial commit codebase Kyros MVP Phase 1 + `_local/` gitignored + `.env` root-level esternalizzato per config per-macchina.
+- **Pilot F1 — n8n chat backend (2026-05-21)**: Workflow `API_Client_Chat_Start` (`025`) e relative API conversazionali via OpenRouter (modello LLM esterno).
+- **Pilot F2 — DB AI tables (2026-05-21)**: migrazione `database/migrations/2026_05_pilot_ai.sql` con tabelle `ai_conversations`, `ai_messages`, `ai_summaries` e colonna `sessions.ai_conversation_id UNIQUE` (link bidirezionale 1:1).
+- **Pilot F3-F8 — frontend AI (2026-05-22)**: AI Chat Concierge nel client (`ChatPanel.tsx`) + Admin Summary UI nella Control Room con summary/sentiment via async job.
+- **docker-compose override (2026-05-22)**: file `docker-compose.override.yml` per personalizzazioni locali senza toccare la base NeuroForge.
+
+### Changed
+- **CallNext workflow** (`014`): aggiunta query `ai_conversation_id` per trigger del Summarize asincrono al call-next.
+- Rimossi riferimenti legacy a `GEMINI_API_KEY` in favore di OpenRouter come provider LLM.
+
+### Fixed
+- **Concierge button & history panel**: polish UI dopo feedback pilot.
+- **Race condition chat**: gestione fetch pendenti su unmount tramite `AbortController`.
+- **Summary CSV bug**: corretto export CSV summary admin (ref. commit `9f2a694`).
+
+---
+
+## [Unreleased] — review di sicurezza/architettura (2026-06-01)
+- Audit cross-cutting completato: identificati 4 critici di sicurezza (SQL injection in `003_setup_tenant*`, PIN in plaintext, token admin non firmato, multi-tenant isolation gap su marketing cards) e ~15 issue medi (race janitor/heartbeat, Socket.io non implementato lato client, schema desync `kyros_schema.sql` vs migration AI, no CI/CD, branch protection assente).
+- Vedi `~/.claude/plans/leggi-il-grafo-e-declarative-peacock.md` per il dettaglio completo e l'ordine di triage proposto.
+
+## [1.4.0] - 2026-06-01 — Demo Hardening (P0)
+### Fixed
+- **P0-1 Schema consolidato:** Tabelle AI (`ai_conversations`, `ai_messages`, `ai_summaries`, `ai_usage_monthly`) e colonna `sessions.ai_conversation_id` incorporate in `database/kyros_schema.sql` (sezione 5D). File migration `2026_05_pilot_ai.sql` marcato come reference storica. Drop DB + applica solo `kyros_schema.sql` è ora sufficiente.
+- **P0-2 WaitingRoom race condition:** Sostituito `setInterval` con `setTimeout` ricorsivo in `WaitingRoom.tsx`; il prossimo poll parte solo dopo che il precedente è completato. Aggiunto Page Visibility API: heartbeat immediato quando la tab torna in foreground. Rimossi `eslint-disable` con ref pattern corretto.
+- **P0-3 Janitor soglia:** Aumentato timeout ghost session da 15 a 30 minuti in `018_JOB_Janitor.json` per evitare che sessioni vive vengano uccise durante demo prolungate.
+- **P0-4 PIN error UX:** `setError(false)` spostato come prima riga incondizionale di `handleDigit` in `LoginGate.tsx`. Errore scompare al primo digit, non al completamento.
+- **P0-5 ChatPanel memory leak:** `abortPending()` chiamato anche su chiusura del panel (non solo su unmount). Aggiunto timeout 15s su ogni fetch AI in `handleSend`. Rimossi `eslint-disable` con ref guard (`handoverShownRef`) e deps corrette.
+### Added
+- **P1-3 Node version lock:** `.nvmrc` con Node 20 in root; `engines: { "node": ">=20" }` in `pwa/package.json`.
+- **P1-4 Pre-demo snapshot script:** `scripts/pre_demo.ps1` — backup DB con `pg_dump`, export n8n workflows via REST API, flag `-Reset` per pulizia sessioni/AI data prima della demo.
+- **Smoke test script:** `scripts/smoke_test.ps1` — testa concorrenza (5 session parallele, uniqueness ticket, FIFO positions, dual call-next race), session recovery GET, e stampa checklist per i test manuali (heartbeat sotto carico, chat AI parallela).
+### Fixed
+- **P1-1 Empty states audit:** WaitingRoom: banner amber "Connection lost — retrying…" quando il poll fallisce (rete persa o risposta non-success). ControlRoom: banner rosso "Backend offline — queue updates paused" quando `loadQueueStatus` lancia eccezione; redirect a `/control-room/login` se session localStorage mancante o `expires_at` scaduto.
+- **P1-2 ESLint cleanup:** Rimosso l'ultimo `eslint-disable` in `AIUsageCard.tsx` convertendo `fetchUsage` a `useCallback`. Zero `eslint-disable` rimasti nei file TSX.
+
