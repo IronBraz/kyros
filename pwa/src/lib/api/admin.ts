@@ -151,7 +151,7 @@ export async function getAIUsage(storeId: string): Promise<ApiResponse<{
 }
 
 // Session Status
-export async function updateSessionStatus(sessionId: string, status: 'serving' | 'finished' | 'missed'): Promise<ApiResponse<{
+export async function updateSessionStatus(sessionId: string, status: 'called' | 'serving' | 'finished' | 'missed'): Promise<ApiResponse<{
   session_id: string;
   ticket_code: string;
   status: string;

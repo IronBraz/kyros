@@ -86,6 +86,12 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
     }
   }, [navigate]);
 
+  // Set browser tab title for the control room
+  useEffect(() => {
+    document.title = 'Kyros – Control Room';
+    return () => { document.title = 'Kyros'; };
+  }, []);
+
   // Sync currentView with mode prop from routing
   useEffect(() => {
     setCurrentView(mode);
@@ -283,6 +289,19 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
     }
   }, [waitingCustomers, storeId]);
 
+  const handleRecall = async (id: string) => {
+    try {
+      const response = await updateSessionStatus(id, 'called');
+      if (response.success) {
+        await loadQueueStatus();
+      } else {
+        console.error('Failed to recall session:', response.error);
+      }
+    } catch (e) {
+      console.error('Failed to recall session:', e);
+    }
+  };
+
   const handleDeleteZone = async (id: string) => {
     console.log('Deleting entry point:', id);
     try {
@@ -466,9 +485,7 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
           missed={missedCustomers}
           onCallNext={callNext}
           isCallingNext={isCalling}
-          onRecall={(id) => {
-            setCustomers(prev => prev.map(c => c.id === id ? { ...c, status: 'waiting', position: 0 } : c));
-          }}
+          onRecall={handleRecall}
           onMarkServed={async (id) => {
             const customer = customers.find(c => c.id === id);
             if (customer) {
