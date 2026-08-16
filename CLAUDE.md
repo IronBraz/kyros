@@ -15,18 +15,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Architecture
 
 ### Stack
-- **Backend**: n8n workflows (self-hosted, Docker-based)
-- **Database**: PostgreSQL 18.1 (UUIDv7, JSONB for flexible config)
+- **Backend**: **one serverless function** (`api/index.ts`) mounting a Hono app (`server/`), on Vercel
+- **Database**: **Neon** serverless Postgres (`eu-central-1`), via `@neondatabase/serverless` in HTTP mode
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS + Zustand
-- **Real-time**: Socket.io (backend emitter ready; frontend subscriber NOT yet implemented — client uses HTTP polling as of 2026-06-01)
-- **Proxy**: Caddy (reverse proxy, HTTPS, static assets)
-- **Infrastructure**: NeuroForge Docker Compose stack on **Local PC**, exposed via **Cloudflare Tunnel** (see `specs/10_Deployment_Operations.md`). NOT a Linux VPS in Phase 1.
+- **Real-time**: **none — HTTP polling.** There is no Socket.io anywhere in this repo and never was; `SUB_Socket_Emitter` existed only as prose in the specs
+- **Infrastructure**: Vercel (team `brainforge1`, project `kyros`, Hobby plan)
+
+> **The n8n backend is history.** It is frozen at the tag `v1.5.0-n8n-final` and the branch
+> `legacy/n8n`, with the live workflows exported verbatim in `n8n/live_export_2026-08-16/`.
+> The numbered files in `n8n/*.json` were already stale before the migration: only 7 of 32
+> still matched the running instance. Do not treat them as documentation of anything.
 
 ### Key Architecture Decisions
 - **Multi-tenancy**: Shared database, shared schema (tenant_id/store_id columns)
-- **Monolith Frontend**: Single React PWA serves both Client and Admin interfaces (routes differentiate)
+- **Monolith Frontend**: Single React app serves both Client and Admin interfaces (routes differentiate)
 - **Service Points (not Staff)**: Queue activity tracked by physical "Cassa" (checkout counter), not individual operators
 - **FIFO Global**: All service points pull from a single store-wide queue in chronological order
+- **One function, not one file per route**: keeps a single bundle warm, stays inside the
+  Hobby function limit, and gives real middleware instead of per-file copy-paste
+- **Same origin**: the SPA and the API share a host, so `API_BASE` stays `''` and there is no CORS
+- **HTTP driver, not `pg`**: each invocation is a fresh process, so a connection pool is never
+  reused and would exhaust the database. Multi-statement atomicity uses `sql.transaction([...])`
+
+### Rules that are easy to get wrong
+1. **`store_id` always comes from the admin session token**, never from the query string or
+   body, even though the frontend still sends it. That single rule is what closes the IDORs.
+2. **Never `CURRENT_DATE`.** Neon runs in UTC and stores have their own timezone. Use
+   `store_today(store_id)` for anything meaning "today".
+3. **Never build SQL by concatenation.** Use the tagged template form, which parameterises.
+4. **The wiki is a build artefact.** `server/lib/wiki.generated.ts` is gitignored and produced
+   by `npm run prebuild`; editing `knowledge/public/*.md` requires a redeploy to take effect.
 
 ## Database Schema
 

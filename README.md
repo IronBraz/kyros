@@ -7,8 +7,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18.1-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![n8n](https://img.shields.io/badge/n8n-workflows-EA4B71?logo=n8n&logoColor=white)](https://n8n.io/)
+[![Hono](https://img.shields.io/badge/Hono-4-E36002?logo=hono&logoColor=white)](https://hono.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-336791?logo=postgresql&logoColor=white)](https://neon.tech/)
+[![Vercel](https://img.shields.io/badge/Vercel-serverless-000000?logo=vercel&logoColor=white)](https://vercel.com/)
 [![Status: MVP Phase 1](https://img.shields.io/badge/status-MVP%20Phase%201-green.svg)](#roadmap)
 
 ---
@@ -31,7 +32,7 @@
 
 Kyros is a **queue management and concierge platform** for retail stores. It replaces the passive "stand in line and hope" experience with a digital flow: customers scan a QR code at the entrance, get a ticket on their phone, watch the queue progress live, and receive a notification when it's their turn — all while the store's Control Room manages calls and capacity from a single screen.
 
-The architecture is intentionally **modest and self-hostable**: a React PWA on the front, n8n workflows as the backend (no custom Node/Express server to maintain), PostgreSQL 18 for storage, Caddy as the reverse proxy. No external SaaS dependencies — you run the whole stack on a single VPS.
+The architecture is intentionally small: a React app on the front, a single serverless TypeScript function behind it, and a Postgres database. No message queue, no cache layer, no realtime service — the queue board polls, which is enough for a room with twenty people in it and one less thing to keep alive.
 
 Designed for retail with **variable footfall**: workshops, parts counters, concierge desks, premium supermarkets, service desks at events. Multi-tenant from day one (one shared database, isolation by `tenant_id`).
 
@@ -41,8 +42,9 @@ Designed for retail with **variable footfall**: workshops, parts counters, conci
 - **NFC tag write-and-go** — admins can write entry-point tags from the Control Room
 - **Real-time Control Room** — single-screen FIFO queue board for operators
 - **Multi-tenant by design** — shared schema, tenant isolation, brand-per-store theming
-- **PIN-based admin access** — no user accounts to provision, no passwords to forget
-- **Progressive Web App** — installable, works on any modern phone, offline shell
+- **PIN-based admin access** — no user accounts to provision, no passwords to forget.
+  PINs are stored as scrypt hashes and rate limited; sessions are HMAC-signed tokens
+- **Mobile-first web app** — works on any modern phone, nothing to install from a store
 - **Daily auto-reset** — ticket codes restart every midnight in the store's timezone
 - **Janitor jobs** — automatic cleanup of ghost sessions and missed calls
 - **Marketing content feed** — push messages, offers, or branding to the waiting room
@@ -59,27 +61,33 @@ Designed for retail with **variable footfall**: workshops, parts counters, conci
           │                  │                  │
           └────── HTTPS ─────┴───────┬──────────┘
                                      │
-                            ┌────────▼────────┐
-                            │     Caddy       │
-                            │ (reverse proxy) │
-                            └────────┬────────┘
-                                     │
-                            ┌────────▼────────┐
-                            │   n8n (REST)    │
-                            │  /api/v1/...    │
-                            └────────┬────────┘
-                                     │
-                            ┌────────▼────────┐
-                            │ PostgreSQL 18   │
-                            │ (UUIDv7+JSONB)  │
-                            └─────────────────┘
+                    ┌────────────────▼────────────────┐
+                    │        Vercel (region fra1)     │
+                    ├─────────────────────────────────┤
+                    │  Static: pwa/dist (React 19)    │
+                    │  /api/*  ─▶ one Function        │
+                    │            (Node + Hono)        │
+                    └────────┬───────────────┬────────┘
+                             │               │
+                    ┌────────▼──────┐  ┌─────▼────────┐
+                    │ Neon Postgres │  │  OpenRouter  │
+                    │ (eu-central-1)│  │  (concierge) │
+                    └───────────────┘  └──────────────┘
 ```
 
 - **Frontend** — single React 19 PWA (`pwa/`), routed monolith: `/` for clients, `/control-room` for admins
-- **Backend** — n8n workflow exports (`n8n/`), 24+ workflows covering Client API, Admin API, sub-workflows, and background jobs
-- **Database** — PostgreSQL 18.1 schema with UUIDv7 IDs and JSONB for flexible store settings (`database/`)
-- **Proxy** — Caddy in front, terminating HTTPS and routing `/api/*` to n8n, everything else to the PWA bundle
+- **Backend** — one serverless function (`api/index.ts`) mounting a Hono app (`server/`).
+  A single function rather than a file per route: it keeps one bundle warm instead of many,
+  stays inside the Vercel Hobby function limit, and gives real middleware (auth, rate
+  limiting, validation) instead of the same checks copy-pasted into every handler.
+- **Database** — Neon serverless Postgres, accessed over the HTTP driver: in serverless
+  there is no process to hold a connection pool. Schema in `database/kyros_schema.sql`.
+- **Same origin** — the SPA and the API share one host, so the frontend calls `/api/v1/*`
+  relative and there is no CORS anywhere.
 
+The previous backend was 32 n8n workflows self-hosted behind a Cloudflare Tunnel. It is
+frozen at [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final) with the workflows
+exported verbatim in `n8n/live_export_2026-08-16/`.
 ## Project structure
 
 ```
@@ -88,45 +96,65 @@ kyros/
 ├── LICENSE                    # PolyForm Noncommercial 1.0.0
 ├── CHANGELOG.md
 ├── CLAUDE.md                  # Architectural guide for AI assistants
-├── pwa/                       # React 19 + TS + Vite PWA (client + admin monolith)
-├── n8n/                       # 24+ workflow JSON exports
-├── database/                  # PostgreSQL 18 schema + utility scripts
+├── api/index.ts               # Vercel entry point, mounts the Hono app
+├── server/                    # The backend
+│   ├── app.ts                 #   routing + global middleware
+│   ├── routes/                #   client, chat, admin, internal
+│   └── lib/                   #   db, auth, pin, ratelimit, janitor, openrouter, wiki
+├── pwa/                       # React 19 + TS + Vite (client + admin monolith)
+├── knowledge/public/          # Store wiki, baked into the bundle at build time
+├── database/                  # Postgres schema
+├── scripts/                   # db-apply, db-seed, smoke, generate-wiki, dev-api
+├── tests/                     # vitest unit tests
 ├── specs/                     # Technical specifications (Italian)
 ├── project-board/             # Kanban-style task board (markdown)
+├── n8n/                       # Historical: the previous backend, frozen
 └── docs/
     └── Kyros_Overview.pdf     # Project overview / pitch deck
 ```
+
+> Anything in `api/` that does not start with `_` becomes an HTTP function on Vercel, which
+> is why the backend lives in `server/` at the root and `api/index.ts` is only a shim.
 
 ## Getting started
 
 ### Prerequisites
 - Node.js 20+
-- Docker (for n8n)
-- PostgreSQL 18.1+
-- Caddy (production only)
+- A Neon database (or any Postgres 12+) reachable via `DATABASE_URL`
+- The Vercel CLI, if you want to run the API locally the way it runs in production
 
-### 1. Database
-
-```bash
-createdb -U postgres kyros
-psql -U postgres -d kyros -f database/kyros_schema.sql
-```
-
-See [`database/README.md`](database/README.md) for details.
-
-### 2. n8n workflows
-
-Spin up an n8n instance (self-hosted, Docker recommended), create a Postgres credential named `postgres-kyros-cred` pointing to your database, then import the workflows from `n8n/` in the order documented in [`n8n/README.md`](n8n/README.md).
-
-### 3. PWA
+### 1. Install and configure
 
 ```bash
-cd pwa
 npm install
-npm run dev
+cp .env.example .env.local     # then fill in DATABASE_URL and KYROS_SESSION_SECRET
 ```
 
-Default dev URL: `http://localhost:5173`. See [`pwa/README.md`](pwa/README.md) for production build and Caddy snippet.
+### 2. Database
+
+```bash
+npm run db:apply                        # applies database/kyros_schema.sql
+KYROS_SEED_ADMIN_PIN=<pin> npm run db:seed
+```
+
+The PIN is never written to a file and only its scrypt hash reaches the database.
+
+### 3. Run it
+
+Two terminals, because the API and the SPA are separate processes in development while
+sharing one origin in production:
+
+```bash
+./scripts/dev-api.ps1      # API on :3100
+npm run dev                # SPA on :5173, proxying /api to :3100
+```
+
+### 4. Check it
+
+```bash
+npm test                                   # unit tests, no database needed
+KYROS_SMOKE_PIN=<pin> npm run smoke        # full journey against a running deployment
+```
 
 ## Roadmap
 

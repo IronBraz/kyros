@@ -139,3 +139,82 @@ Sono i motivi per cui si migra. Chi ripristina questo tag li eredita:
 4. Ricreare a mano le credenziali n8n (`Postgres Kyros`, OpenRouter): l'export le strippa.
 5. Cloudflare Tunnel su `mind.neuroforge.club`, PWA buildata in `config/caddy/kyros/`.
 
+## [2.0.0] - 2026-08-16 — Backend serverless su Vercel + Neon
+
+Il backend passa da **32 workflow n8n** su PC locale a una **singola funzione serverless
+TypeScript** (Hono) su Vercel, con **Neon Postgres**. Il frontend React resta invariato al
+95%: SPA e API condividono lo stesso origin, quindi `API_BASE` resta `''` e non c'è CORS.
+
+Versione maggiore perché cambia il runtime, cambia il database e **cambia il contratto di
+autenticazione**: il header `X-Admin-Session` ora è obbligatorio su tutti gli endpoint admin.
+
+### Added
+- **Backend TypeScript versionato** in `server/`: `app.ts`, `routes/{client,chat,admin,internal}.ts`,
+  `lib/{db,respond,auth,pin,ratelimit,janitor,openrouter,wiki,settings,config}.ts`.
+  Una sola funzione (`api/index.ts`): un bundle solo da scaldare, dentro il limite Hobby,
+  e middleware veri invece degli stessi controlli ricopiati in ogni handler.
+- **Autenticazione**, che prima non esisteva affatto:
+  - PIN hashati con `scrypt` (`admin_access.access_code_hash`), niente più chiaro nel DB
+  - Sessioni come token HMAC-SHA256 firmati, scadenza 8 ore
+  - `adminGuard` su tutto `/admin/*` tranne `auth/verify` e `auth/stores`
+  - Rate limiting a token bucket su Postgres: 10 tentativi PIN / 15 min, anti-flood su
+    creazione sessione e chat. L'IP è hashato col secret, mai memorizzato in chiaro
+  - `/api/internal/*` dietro `CRON_SECRET`, confronto a tempo costante
+- **Janitor lazy**: su Hobby i cron sono solo giornalieri, quindi lo sweep gira dentro
+  `GET /admin/queue/status` (che la Control Room chiama ogni 2-5s) con lock atomico su
+  `job_runs` che lo limita a una volta al minuto, in `waitUntil()` così non rallenta mai la
+  risposta. **Risultato: gira ogni 60 secondi invece che ogni 5 minuti.**
+  Cron giornaliero alle 02:00 UTC per lo sweep completo quando nessuno guarda.
+- **Prompt caching** sul blocco wiki (`cache_control: ephemeral`), previsto in
+  `specs/Pilot_Handover.md` e mai implementato. Il wiki è ~10 KB rimandati identici a ogni
+  messaggio.
+- **Zod** su ogni input. I workflow leggevano `$json.body.x` senza validare niente.
+- `scripts/`: `db-apply`, `db-seed`, `smoke` (e2e), `generate-wiki`, `dev-api.ps1`.
+- **CI su GitHub Actions**: typecheck, test, build su ogni PR.
+- **28 test unitari** (vitest): firma token, hash PIN, deep merge settings, calcolo costi.
+
+### Changed
+- **Il wiki è un artefatto di build.** `scripts/generate-wiki.ts` compila
+  `knowledge/public/*.md` in un modulo al momento del build, invece di `fs.readdirSync` a
+  runtime a ogni messaggio. Conseguenza: modificare il wiki richiede un push.
+  `POST /admin/wiki/reload` cambia semantica, da "ricarica" a "dimmi che versione è online".
+- **`store_id` viene sempre dal token**, mai da query string o body. Il frontend continua a
+  mandarlo, il server lo ignora.
+- Gli URL dei QR si costruiscono da `KYROS_PUBLIC_URL`, non più concatenati dentro l'SQL.
+- Il cap di budget AI si legge da `KYROS_AI_BUDGET_EUR` in un punto solo e l'API lo
+  restituisce come `cap_eur`. Prima era scritto in tre posti.
+
+### Fixed
+- **`generate_ticket_code()` usava il fuso del server.** Andava bene finché Postgres girava
+  su `Europe/Rome`; Neon gira in UTC, quindi in ora legale il reset sarebbe slittato alle
+  02:00 italiane. Ora la data si calcola nel fuso dello store, con `store_today()` per tutte
+  le query "di oggi".
+- **Rollover `A-999` → `B-001`**, promesso da un commento da sempre e mai implementato: il
+  ticket dopo `A-999` era `A-1000`.
+- **Merge delle settings profondo.** `settings || $2::jsonb` è shallow: salvando solo
+  `accepting_tickets` sparivano `closed_message` e tutti e tre i timeout.
+- **`internal/ai/summarize` non è più un endpoint pubblico.** Era un webhook non autenticato
+  che chiunque poteva martellare bruciando budget OpenRouter; ora è una chiamata di funzione
+  in `waitUntil()` dopo la risposta.
+- **Una sola tabella costi AI.** Il summarize hardcodava i prezzi di Haiku dentro l'SQL e
+  continuava ad applicarli qualunque modello fosse configurato.
+- **IDOR chiusi**, anche sulle 4 route che prendevano solo un id di riga: conoscere un UUID
+  bastava per modificare o cancellare i dati di un altro store.
+- `marketing_cards.updated_at` ora esiste (l'API la scriveva già dal 1.2.0).
+- `sessions.status` ha un `CHECK`: era una VARCHAR libera, un typo scriveva uno stato
+  inesistente e la sessione spariva dalla board senza segnalare nulla.
+- `idx_entry_points_slug` rimosso, duplicava l'indice del vincolo `UNIQUE`.
+- Il proxy dev `/api` in `pwa/vite.config.ts` ora esiste davvero: `pwa/README.md` sosteneva
+  di sì dal principio, ma `npm run dev` da solo non parlava col backend.
+
+### Security
+- `knowledge/internal/` non è più tracciato; PIN demo `1234` rimosso dai file tracciati.
+- Repo passato a **privato** durante la migrazione.
+- Da cancellare allo spegnimento di n8n: **`TEMP_DB_Utils`**, webhook di esecuzione SQL
+  arbitraria (inattivo, ma presente nell'istanza).
+
+### Note
+Nessuna migrazione dati: fresh start deciso, quelli erano dati demo.
+Restano fuori da questo giro: Socket.io/real-time, service worker e PWA vera, cookie
+HttpOnly al posto di localStorage.
+
