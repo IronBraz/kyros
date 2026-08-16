@@ -11,11 +11,20 @@ export default defineConfig(() => {
       port: 5173,
       host: '0.0.0.0',
       // In production the SPA and the API share one origin on Vercel, so API_BASE stays ''
-      // and requests go to /api/v1/* relative. In dev the SPA is on 5173 and the backend on
-      // 3000, so without this proxy `npm run dev` alone cannot reach the API at all.
-      // Run `vercel dev` on port 3000 in a second terminal.
+      // and requests go to /api/v1/* relative. In dev the SPA is on 5173 and the backend is
+      // wherever `vercel dev` is listening, so without this proxy `npm run dev` alone cannot
+      // reach the API at all.
+      //
+      // 3100 rather than Vercel's default 3000: the NeuroForge Docker stack already binds
+      // 3000 (Grafana) and 3001. Override with KYROS_DEV_API_PORT if your machine differs.
+      //
+      //   Terminal 1:  vercel dev --listen 3100
+      //   Terminal 2:  npm run dev
       proxy: {
-        '/api': { target: 'http://localhost:3000', changeOrigin: true },
+        '/api': {
+          target: `http://localhost:${process.env.KYROS_DEV_API_PORT ?? 3100}`,
+          changeOrigin: true,
+        },
       },
     },
     plugins: [react()],

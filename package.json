@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "vercel dev",
+    "dev": "npm run dev -w pwa",
     "prebuild": "tsx scripts/generate-wiki.ts",
     "build": "npm run build -w pwa",
     "typecheck": "tsc -p tsconfig.json --noEmit",

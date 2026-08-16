@@ -1,6 +1,10 @@
 import { Hono } from 'hono';
 import { db } from './lib/db.js';
 import { ErrorCode, fail, ok } from './lib/respond.js';
+import adminRoutes from './routes/admin.js';
+import chatRoutes from './routes/chat.js';
+import clientRoutes from './routes/client.js';
+import internalRoutes from './routes/internal.js';
 
 const app = new Hono();
 
@@ -29,5 +33,12 @@ app.get('/api/v1/health', async (c) => {
 
   return ok(c, rows[0] ?? {});
 });
+
+// The chat routes live under /client because that is where the PWA calls them
+// (/api/v1/client/chat/start), even though they are a separate concern in the code.
+app.route('/api/v1/client', clientRoutes);
+app.route('/api/v1/client', chatRoutes);
+app.route('/api/v1/admin', adminRoutes);
+app.route('/api/internal', internalRoutes);
 
 export default app;
