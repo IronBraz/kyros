@@ -55,6 +55,12 @@ graphify-out/
 # TypeScript build info
 *.tsbuildinfo
 
+# Build artefact: knowledge/public/*.md baked into a module by scripts/generate-wiki.ts
+server/lib/wiki.generated.ts
+
+# Vercel CLI local state (.vercel/project.json links the repo to the Vercel project)
+.vercel/
+
 # Project-level exclusions (must never be re-added)
 OUTPUT/
 Documenti-Analisi/
