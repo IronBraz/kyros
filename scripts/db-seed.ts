@@ -39,7 +39,9 @@ if (pin === '1234') {
 
 const TENANT_NAME = process.env.KYROS_SEED_TENANT ?? 'Kyros Demo';
 const STORE_NAME = process.env.KYROS_SEED_STORE ?? 'Milano Centro';
-const PUBLIC_URL = process.env.KYROS_PUBLIC_URL ?? 'https://kyros.vercel.app';
+// Same domain the n8n backend hardcoded into the QR URLs, now pointed at Vercel instead of
+// the Cloudflare Tunnel. Keeping it means already-printed QR codes stay valid.
+const PUBLIC_URL = process.env.KYROS_PUBLIC_URL ?? 'https://kyros.neuroforge.club';
 
 // Mirrors exactly what the Control Room settings panel reads back
 // (pwa/src/routes/admin/ControlRoom.tsx:141-150) plus qr_base_url, which only the backend
