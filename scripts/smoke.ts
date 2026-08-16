@@ -244,12 +244,14 @@ if (!PIN) {
     { token }
   );
   // Asking for a store that does not exist must still answer with OUR store, not 404,
-  // because the parameter is discarded before it reaches the query. Comparing the payload
-  // rather than just the status: an empty 200 would also pass a status-only check.
+  // because the parameter is discarded before it reaches the query. Look for our own
+  // ticket in the payload, not just the status: an empty 200 would pass a status-only
+  // check. Do NOT compare against the snapshot taken above -- the janitor sweeps ghost
+  // sessions between requests, so two boards read a second apart legitimately differ.
   check(
     'asking for another store returns our own board',
     okBody(idor) &&
-      JSON.stringify(idor.body.data?.waiting) === JSON.stringify(status.body.data?.waiting),
+      (idor.body.data?.waiting ?? []).some((w) => w.ticket_code === created.body.data?.ticket_code),
     { asked: otherStore, got: idor.body.data?.waiting }
   );
 
