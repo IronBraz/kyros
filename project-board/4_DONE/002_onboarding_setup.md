@@ -15,7 +15,7 @@ Implementare l'endpoint `POST /api/v1/admin/setup` che permette di inizializzare
     "brand_name": "My Coffee Shop",
     "store_name": "Milano Centrale",
     "address": "Piazza Duca d'Aosta 1",
-    "admin_pin": "1234"
+    "admin_pin": "<pin>"
   }
   ```
 - **Logica (Transazionale):**

@@ -2,8 +2,10 @@
 # Smoke test §6: concurrent queue, heartbeat, and session-recovery checks.
 #
 # Usage:
-#   ./scripts/smoke_test.ps1 -EntryPointSlug main-entrance -AdminPin 1234 -StoreId <uuid>
-#   ./scripts/smoke_test.ps1 -BaseUrl https://your-tunnel.cloudflare.app ...
+#   ./scripts/smoke_test.ps1 -EntryPointSlug main-entrance -AdminPin <pin> -StoreId <uuid>
+#   ./scripts/smoke_test.ps1 -BaseUrl https://your-deployment-url ...
+#
+# Never hardcode a real PIN here. Pass -AdminPin or set $env:KYROS_ADMIN_PIN.
 #
 # What it tests automatically:
 #   §6.1 Concorrenza queue  — 5 parallel sessions + uniqueness + FIFO check

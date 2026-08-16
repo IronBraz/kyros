@@ -36,9 +36,9 @@ VALUES ('<store_id>', 'Ingresso Principale', 'test-entrance');
 INSERT INTO service_points (store_id, name)
 VALUES ('<store_id>', 'Cassa Test');
 
--- Admin Access (PIN: 1234)
+-- Admin Access (PIN: choose your own, never commit a real one)
 INSERT INTO admin_access (store_id, access_code, label, is_active)
-VALUES ('<store_id>', '1234', 'Test PIN', true);
+VALUES ('<store_id>', '<test_pin>', 'Test PIN', true);
 EOF
 ```
 
@@ -61,7 +61,7 @@ EOF
 
 **FASE C - Test Admin Call**:
 1. Browser (altra tab): `https://your-domain.example.com/control-room/`
-2. Login PIN: `1234`
+2. Login PIN: `<test_pin>`
 3. Seleziona store "Test Store"
 4. **VERIFICA**: UI mostra coda con 1 cliente (A-001)
 5. Click "Chiama Prossimo"

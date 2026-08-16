@@ -95,3 +95,47 @@ Questo file tiene traccia di tutte le modifiche rilevanti apportate al progetto,
 - **P1-1 Empty states audit:** WaitingRoom: banner amber "Connection lost — retrying…" quando il poll fallisce (rete persa o risposta non-success). ControlRoom: banner rosso "Backend offline — queue updates paused" quando `loadQueueStatus` lancia eccezione; redirect a `/control-room/login` se session localStorage mancante o `expires_at` scaduto.
 - **P1-2 ESLint cleanup:** Rimosso l'ultimo `eslint-disable` in `AIUsageCard.tsx` convertendo `fetchUsage` a `useCallback`. Zero `eslint-disable` rimasti nei file TSX.
 
+## [1.5.0] - 2026-08-16 — Ultima release con backend n8n
+
+**Questa è l'ultima versione funzionante di Kyros con il backend su n8n.** Da qui in poi il
+backend passa a **TypeScript serverless su Vercel** (una singola funzione Hono) con database
+**Neon Postgres**. Lo stack Docker NeuroForge non è più il runtime di Kyros.
+
+Il punto di ripristino è il tag `v1.5.0-n8n-final` e il branch `legacy/n8n`.
+
+### Added
+- **`n8n/live_export_2026-08-16/`**: export verbatim dei 35 workflow Kyros presi
+  dall'istanza viva prima del taglio. Diventa la fonte storica di verità per il backend n8n,
+  al posto dei file numerati in `n8n/*.json`.
+
+### Fixed (igiene, audit di sicurezza pre-migrazione)
+- **`knowledge/internal/` non è più tracciato** (`.gitignore` + `git rm --cached`). Contiene
+  prezzi, margini e note staff: cartella progettata per dati interni, su un repo pubblico.
+  I file restano sul disco locale. Nessun codice la legge (la chat AI carica solo
+  `knowledge/public/`, vedi `specs/07_AI_Engine.md`).
+- **PIN demo `1234` rimosso dai file tracciati**: `scripts/smoke_test.ps1`,
+  `project-board/_archive_mvp_phase1/019_test_end_to_end.md`,
+  `project-board/4_DONE/002_onboarding_setup.md`, `specs/05_Infra_Architecture.md`,
+  `specs/10_Deployment_Operations.md`. Sostituito con placeholder.
+
+### Known issues — non risolti in questa release, per progetto
+Sono i motivi per cui si migra. Chi ripristina questo tag li eredita:
+1. **Nessuna autenticazione server-side.** Ogni webhook n8n è `authentication: none` e
+   `SUB_Auth_Manager` ritorna `authorized: true` hardcoded senza che nessuno lo chiami.
+   Chiunque conosca l'URL può chiamare la coda. Il frontend non manda mai `X-Admin-Session`.
+2. **IDOR su tutti gli endpoint admin.** `store_id` arriva da query string o body e non viene
+   mai validato contro una sessione.
+3. **PIN admin in chiaro** in `admin_access.access_code`, senza rate limiting: 4 cifre =
+   10.000 combinazioni provabili senza alcun limite.
+4. **`internal/ai/summarize` è un webhook pubblico non autenticato** che consuma budget
+   OpenRouter a ogni chiamata.
+
+### Rollback — come rimettere in piedi questa versione
+1. Stack Docker NeuroForge attivo (`C:\Progetti\NeuroForge`, `docker compose up -d`), con
+   i container `n8n`, `postgres`, `caddy`, `tunnel`.
+2. Applicare `database/kyros_schema.sql` su Postgres.
+3. Importare i workflow da **`n8n/live_export_2026-08-16/`** (non da `n8n/*.json`, sono stalli):
+   `n8n import:workflow --separate --input=<dir>`.
+4. Ricreare a mano le credenziali n8n (`Postgres Kyros`, OpenRouter): l'export le strippa.
+5. Cloudflare Tunnel su `mind.neuroforge.club`, PWA buildata in `config/caddy/kyros/`.
+

@@ -100,7 +100,7 @@ Per mantenere pulita l'architettura, ogni azione complessa è delegata a sub-wor
     ```json
     { 
       "store_id": "uuid",
-      "access_code": "1234"
+      "access_code": "<pin>"
     }
     ```
 *   **Logic**:

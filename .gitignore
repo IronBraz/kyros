@@ -72,5 +72,8 @@ _local/
 # Knowledge wiki — raw PDFs (processed into markdown pages; originals are local only)
 knowledge/_raw/*.pdf
 
+# Knowledge wiki — internal pages (pricing, margins, staff notes). Never on a public repo.
+knowledge/internal/
+
 # Claude Code — local permission overrides (machine-specific, not project config)
 .claude/settings.local.json

@@ -115,12 +115,12 @@ Questa sezione guida l'avvio del progetto all'interno dell'ecosistema NeuroForge
     INSERT INTO admin_access (store_id, access_code, label)
     VALUES (
       'uuid-del-tuo-store',
-      '1234',  -- CAMBIA QUESTO!
+      '<scegli-un-pin>',  -- MAI un valore committato nel repo
       'Admin'
     );
     ```
     
-    **IMPORTANTE**: Cambia il codice `1234` con uno personalizzato prima di andare live.
+    **IMPORTANTE**: scegli un PIN casuale. Non riusare mai un PIN che compare nella documentazione o nella history del repo.
 
 ### B. Credenziali e Riferimenti
 | Servizio | URL / Endpoint | User | Password | Note |

@@ -13,6 +13,20 @@
 
 ---
 
+> ### 🚧 Migrazione in corso: da n8n a Vercel + Neon
+>
+> Il backend sta passando da **32 workflow n8n** self-hosted a una singola **funzione
+> serverless TypeScript (Hono) su Vercel**, con **Neon Postgres** come database.
+> Il frontend React resta com'è.
+>
+> L'ultima versione funzionante con backend n8n è congelata qui:
+> **tag [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final)** · branch **`legacy/n8n`** ·
+> workflow verbatim in [`n8n/live_export_2026-08-16/`](n8n/live_export_2026-08-16/).
+>
+> Le sezioni *Architecture* e *Deployment* qui sotto descrivono ancora lo stack n8n e
+> verranno riscritte a migrazione completata. Vedi `CHANGELOG.md` 1.5.0 per i limiti noti
+> di quella versione (in sintesi: **nessuna autenticazione server-side**).
+
 ## What is Kyros?
 
 Kyros is a **queue management and concierge platform** for retail stores. It replaces the passive "stand in line and hope" experience with a digital flow: customers scan a QR code at the entrance, get a ticket on their phone, watch the queue progress live, and receive a notification when it's their turn — all while the store's Control Room manages calls and capacity from a single screen.
