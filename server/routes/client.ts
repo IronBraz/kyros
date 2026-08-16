@@ -2,7 +2,9 @@
 // No authentication: a customer's only credential is the session id in their localStorage.
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { clientIp, hashIp } from '../lib/auth.js';
 import { db } from '../lib/db.js';
+import { Limits, consume } from '../lib/ratelimit.js';
 import { ErrorCode, fail, ok } from '../lib/respond.js';
 
 const client = new Hono();
@@ -23,6 +25,19 @@ client.post('/sessions', async (c) => {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'Invalid request body', 400, parsed.error.issues);
   }
   const { entry_point_id, language } = parsed.data;
+
+  // Anti-flood. One phone should not be able to fill the board with tickets nobody will
+  // claim, which is both a nuisance and a way to make the store look busy when it is not.
+  const limited = await consume(
+    `session:${hashIp(clientIp(c))}`,
+    Limits.createSession.limit,
+    Limits.createSession.windowSeconds
+  );
+  if (!limited.allowed) {
+    c.header('Retry-After', String(limited.retryAfterSeconds));
+    return fail(c, ErrorCode.RATE_LIMITED, 'Too many requests. Please wait a moment.', 429);
+  }
+
   const sql = db();
 
   // `ep.id::text = $1 OR ep.slug = $1`: the cast to text is what makes a non-UUID slug safe

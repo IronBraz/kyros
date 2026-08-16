@@ -1,18 +1,22 @@
 // Control Room endpoints. Sixteen of them.
-//
-// Phase 3 keeps the n8n behaviour of reading store_id from the query string or body, so the
-// frontend does not have to change yet. Phase 4 makes storeId() read it from the signed
-// session token instead and ignore the parameter -- which closes every IDOR in one edit,
-// because every handler below goes through that one helper.
 import { waitUntil } from '@vercel/functions';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { z } from 'zod';
+import {
+  adminGuard,
+  clientIp,
+  hashIp,
+  mintToken,
+  sessionStoreId,
+  sessionTenantId,
+} from '../lib/auth.js';
 import { config } from '../lib/config.js';
 import { db } from '../lib/db.js';
 import { sweepIfDue } from '../lib/janitor.js';
 import { summarizeConversation } from '../lib/openrouter.js';
 import { verifyPin } from '../lib/pin.js';
+import { Limits, consume } from '../lib/ratelimit.js';
 import { ErrorCode, fail, ok } from '../lib/respond.js';
 import { deepMerge, withDefaults } from '../lib/settings.js';
 import { loadWiki } from '../lib/wiki.js';
@@ -22,20 +26,15 @@ const admin = new Hono();
 const uuid = z.string().uuid();
 
 /**
- * The single place a request's store scope is decided.
+ * The single place a request's store scope is decided, and the reason the IDOR is closed.
  *
- * Phase 4 replaces the body of this function with `c.get('store_id')`, taken from the
- * verified session token. Nothing else has to change.
+ * It reads the store from the SIGNED SESSION TOKEN and never from the query string or body.
+ * The frontend still sends ?store_id=... on most calls; the server ignores it. That means
+ * the old `GET /admin/queue/status?store_id=<someone else's uuid>` now returns the caller's
+ * own store, not the one they asked for, and no frontend change was needed to fix it.
  */
-function storeId(c: Context): string | null {
-  const raw = c.req.query('store_id');
-  return raw && uuid.safeParse(raw).success ? raw : null;
-}
-
-function requireStore(c: Context): string | Response {
-  const id = storeId(c);
-  if (!id) return fail(c, ErrorCode.VALIDATION_FAILED, 'store_id must be a uuid', 400);
-  return id;
+function requireStore(c: Context): string {
+  return sessionStoreId(c);
 }
 
 // ---------------------------------------------------------------- auth (public)
@@ -60,6 +59,16 @@ admin.post('/auth/verify', async (c) => {
   }
   const { store_id, access_code } = parsed.data;
   const sql = db();
+
+  // Throttle before touching the database with the guess. 10 tries per 15 minutes per
+  // (store, ip): a 4-digit PIN is 10,000 combinations, which under n8n could be walked
+  // through as fast as the network allowed.
+  const bucket = `pin:${store_id}:${hashIp(clientIp(c))}`;
+  const limited = await consume(bucket, Limits.adminLogin.limit, Limits.adminLogin.windowSeconds);
+  if (!limited.allowed) {
+    c.header('Retry-After', String(limited.retryAfterSeconds));
+    return fail(c, ErrorCode.RATE_LIMITED, 'Too many attempts. Try again later.', 429);
+  }
 
   const stores = (await sql`
     SELECT id, name, tenant_id FROM stores WHERE id = ${store_id} LIMIT 1
@@ -88,26 +97,29 @@ admin.post('/auth/verify', async (c) => {
 
   await sql`UPDATE admin_access SET last_used_at = NOW() WHERE id = ${matched.id}`;
 
-  // Phase 4 replaces this placeholder with an HMAC-signed token carrying store_id, tenant_id
-  // and an expiry. Until then the frontend stores it and the server ignores it, exactly as
-  // under n8n.
-  const expiresAt = new Date(Date.now() + config.adminSessionSeconds * 1000).toISOString();
+  // The token carries the store and tenant and is HMAC-signed, so every later request is
+  // scoped by something the client cannot rewrite. Under n8n this was an unsigned UUID that
+  // nothing ever checked.
+  const { token, expiresAt } = mintToken({ aid: matched.id, sid: store.id, tid: store.tenant_id });
 
   return ok(c, {
-    session_token: crypto.randomUUID(),
+    session_token: token,
     store_id: store.id,
     store_name: store.name,
     label: matched.label,
-    expires_at: expiresAt,
+    expires_at: expiresAt.toISOString(),
   });
 });
+
+// Everything below this line requires a valid X-Admin-Session header. The two routes above
+// are the only public ones, and they are declared before the guard on purpose.
+admin.use('*', adminGuard);
 
 // ---------------------------------------------------------------- queue
 
 // GET /api/v1/admin/queue/status -- the Control Room board, polled every 2-5 seconds
 admin.get('/queue/status', async (c) => {
   const id = requireStore(c);
-  if (typeof id !== 'string') return id;
   const sql = db();
 
   // The lazy janitor. Runs after the response is sent, and only if a minute has passed, so
@@ -194,7 +206,6 @@ admin.get('/queue/status', async (c) => {
 // it is a documented endpoint and costs nothing.
 admin.get('/queue/current', async (c) => {
   const id = requireStore(c);
-  if (typeof id !== 'string') return id;
   const sql = db();
 
   const queue = (await sql`
@@ -214,9 +225,9 @@ admin.get('/queue/current', async (c) => {
 
 // POST /api/v1/admin/queue/call-next -- FIFO, safe with several tills calling at once
 admin.post('/queue/call-next', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-  const id = storeId(c) ?? (uuid.safeParse(body.store_id).success ? (body.store_id as string) : null);
-  if (!id) return fail(c, ErrorCode.VALIDATION_FAILED, 'store_id must be a uuid', 400);
+  // The frontend still posts {store_id}. It is read from the token instead, so a till
+  // cannot call the next customer of a store it is not logged into.
+  const id = requireStore(c);
   const sql = db();
 
   // FOR UPDATE SKIP LOCKED is what stops two tills calling the same customer: the second
@@ -334,8 +345,11 @@ admin.patch('/sessions/status', async (c) => {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'Invalid session_id or status', 400);
   }
   const { session_id, status } = parsed.data;
+  const sid = requireStore(c);
   const sql = db();
 
+  // store_id in the WHERE is the access check: without it, a session id was enough to mark
+  // another store's customer as served or missed.
   const rows = (await sql`
     UPDATE sessions SET
       status = ${status},
@@ -344,7 +358,7 @@ admin.patch('/sessions/status', async (c) => {
       finished_at = CASE WHEN ${status} IN ('finished', 'missed', 'abandoned', 'cancelled')
                          THEN NOW() ELSE finished_at END,
       missed_at   = CASE WHEN ${status} = 'missed' THEN NOW() ELSE missed_at END
-    WHERE id = ${session_id}
+    WHERE id = ${session_id} AND store_id = ${sid}
     RETURNING id, ticket_code, status, finished_at
   `) as Array<Record<string, unknown>>;
 
@@ -364,7 +378,6 @@ admin.patch('/sessions/status', async (c) => {
 // GET /api/v1/admin/stores/settings
 admin.get('/stores/settings', async (c) => {
   const id = requireStore(c);
-  if (typeof id !== 'string') return id;
   const sql = db();
 
   const rows = (await sql`
@@ -384,7 +397,6 @@ admin.get('/stores/settings', async (c) => {
 // PATCH /api/v1/admin/stores/settings
 admin.patch('/stores/settings', async (c) => {
   const id = requireStore(c);
-  if (typeof id !== 'string') return id;
   const patch = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'Body must be a settings object', 400);
@@ -425,7 +437,6 @@ function entryPointUrl(slug: string): string {
 // GET /api/v1/admin/entry-points
 admin.get('/entry-points', async (c) => {
   const id = requireStore(c);
-  if (typeof id !== 'string') return id;
   const sql = db();
 
   const rows = (await sql`
@@ -444,9 +455,10 @@ admin.get('/entry-points', async (c) => {
 
 // POST /api/v1/admin/entry-points
 admin.post('/entry-points', async (c) => {
+  // store_id deliberately absent from the schema: it comes from the token, so an entry
+  // point can only ever be created inside the caller's own store.
   const parsed = z
     .object({
-      store_id: uuid,
       name: z.string().min(1).max(100),
       // Slugs end up in a URL and are globally unique, so constrain the shape here rather
       // than discovering the problem when a QR code will not resolve.
@@ -456,7 +468,8 @@ admin.post('/entry-points', async (c) => {
   if (!parsed.success) {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'Invalid entry point', 400, parsed.error.issues);
   }
-  const { store_id, name, slug } = parsed.data;
+  const { name, slug } = parsed.data;
+  const store_id = requireStore(c);
   const sql = db();
 
   const rows = (await sql`
@@ -479,7 +492,15 @@ admin.delete('/entry-points/delete', async (c) => {
   if (!epId || !uuid.safeParse(epId).success) {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'id must be a uuid', 400);
   }
+  const sid = requireStore(c);
   const sql = db();
+
+  // Confirm the entry point belongs to the caller's store before anything else. Without
+  // this, an id was enough to delete another store's QR entry point and its history.
+  const owned = (await sql`
+    SELECT id FROM entry_points WHERE id = ${epId} AND store_id = ${sid}
+  `) as Array<{ id: string }>;
+  if (!owned[0]) return fail(c, ErrorCode.NOT_FOUND, 'Entry point not found', 404);
 
   const active = (await sql`
     SELECT COUNT(*)::int AS active_count
@@ -524,7 +545,6 @@ const cardFields = {
 // GET /api/v1/admin/marketing-cards
 admin.get('/marketing-cards', async (c) => {
   const id = requireStore(c);
-  if (typeof id !== 'string') return id;
   const sql = db();
 
   const cards = (await sql`
@@ -545,13 +565,14 @@ admin.get('/marketing-cards', async (c) => {
 
 // POST /api/v1/admin/marketing-cards
 admin.post('/marketing-cards', async (c) => {
-  const parsed = z
-    .object({ store_id: uuid, ...cardFields })
-    .safeParse(await c.req.json().catch(() => ({})));
+  // store_id comes from the token, not the body, so a card cannot be planted in another
+  // store's waiting room.
+  const parsed = z.object(cardFields).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'Invalid card', 400, parsed.error.issues);
   }
   const d = parsed.data;
+  const storeIdFromToken = requireStore(c);
   const sql = db();
 
   // tenant_id is taken from the store rather than trusted from the body, so a card can
@@ -559,9 +580,9 @@ admin.post('/marketing-cards', async (c) => {
   const rows = (await sql`
     INSERT INTO marketing_cards
       (store_id, tenant_id, type, title, content, icon_name, theme_color, priority, scope, is_active)
-    SELECT ${d.store_id}, s.tenant_id, ${d.type}, ${d.title}, ${d.content},
+    SELECT ${storeIdFromToken}, s.tenant_id, ${d.type}, ${d.title}, ${d.content},
            ${d.icon ?? 'Star'}, ${d.theme ?? 'blue'}, ${d.priority ?? 0}, 'LOCAL', true
-      FROM stores s WHERE s.id = ${d.store_id}
+      FROM stores s WHERE s.id = ${storeIdFromToken}
     RETURNING id, type, title, content, icon_name AS icon, theme_color AS theme,
               priority, is_active AS "isActive"
   `) as Array<Record<string, unknown>>;
@@ -592,10 +613,15 @@ admin.patch('/marketing-cards', async (c) => {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'Invalid card', 400, parsed.error.issues);
   }
   const d = parsed.data;
+  const sid = requireStore(c);
+  const tid = sessionTenantId(c);
   const sql = db();
 
   // COALESCE on every column makes this a real partial update: the frontend sends only what
   // changed, and omitted fields keep their stored value instead of being nulled.
+  //
+  // The store/tenant clause is the access check. Without it, knowing a card's uuid was
+  // enough to edit another store's waiting room, since the id alone identifies the row.
   const rows = (await sql`
     UPDATE marketing_cards SET
       type        = COALESCE(${d.type ?? null}, type),
@@ -607,6 +633,7 @@ admin.patch('/marketing-cards', async (c) => {
       is_active   = COALESCE(${d.isActive ?? null}, is_active),
       updated_at  = NOW()
     WHERE id = ${cardId}
+      AND (store_id = ${sid} OR (store_id IS NULL AND tenant_id = ${tid}))
     RETURNING id, type, title, content, icon_name AS icon, theme_color AS theme,
               priority, is_active AS "isActive"
   `) as Array<Record<string, unknown>>;
@@ -622,10 +649,17 @@ admin.delete('/marketing-cards', async (c) => {
   if (!cardId || !uuid.safeParse(cardId).success) {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'id must be a uuid', 400);
   }
+  const sid = requireStore(c);
+  const tid = sessionTenantId(c);
   const sql = db();
 
+  // Same scoping as the PATCH: a card belonging to another store is simply not found,
+  // rather than deleted.
   const rows = (await sql`
-    DELETE FROM marketing_cards WHERE id = ${cardId} RETURNING id
+    DELETE FROM marketing_cards
+     WHERE id = ${cardId}
+       AND (store_id = ${sid} OR (store_id IS NULL AND tenant_id = ${tid}))
+    RETURNING id
   `) as Array<{ id: string }>;
 
   if (!rows[0]) return fail(c, ErrorCode.NOT_FOUND, 'Card not found', 404);

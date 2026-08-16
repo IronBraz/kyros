@@ -57,6 +57,14 @@ if (-not $env:CRON_SECRET) {
     Write-Host "CRON_SECRET not set, using 'local-dev-cron-secret' for this session" -ForegroundColor Yellow
 }
 
+# Without a signing key every admin session is rejected, so the Control Room cannot be used
+# locally at all. This throwaway value is fine for development and must never be the one in
+# the Vercel project: tokens signed with it would be forgeable by anyone reading this file.
+if (-not $env:KYROS_SESSION_SECRET) {
+    $env:KYROS_SESSION_SECRET = "local-dev-only-not-a-real-secret-0000000000000000"
+    Write-Host "KYROS_SESSION_SECRET not set, using a throwaway dev value" -ForegroundColor Yellow
+}
+
 Write-Host "Starting vercel dev on http://localhost:$Port" -ForegroundColor Cyan
 Write-Host "Frontend: run 'npm run dev' in another terminal (Vite on 5173 proxies /api here)`n"
 

@@ -5,6 +5,8 @@
 // monthly budget, and (added in phase 4) a rate limit per session.
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { clientIp, hashIp } from '../lib/auth.js';
+import { Limits, consume } from '../lib/ratelimit.js';
 import { config } from '../lib/config.js';
 import { db } from '../lib/db.js';
 import { chatCompletion } from '../lib/openrouter.js';
@@ -83,6 +85,20 @@ chat.post('/chat/send', async (c) => {
     return fail(c, ErrorCode.VALIDATION_FAILED, 'Invalid request body', 400, parsed.error.issues);
   }
   const { conversation_id, message } = parsed.data;
+
+  // Third guard on AI spend, alongside the per-conversation turn cap and the monthly budget.
+  // This one is per client: those two are per conversation and global, so neither stops one
+  // person opening conversation after conversation.
+  const limited = await consume(
+    `chat:${hashIp(clientIp(c))}`,
+    Limits.chatSend.limit,
+    Limits.chatSend.windowSeconds
+  );
+  if (!limited.allowed) {
+    c.header('Retry-After', String(limited.retryAfterSeconds));
+    return fail(c, ErrorCode.RATE_LIMITED, 'Too many messages. Please wait a moment.', 429);
+  }
+
   const sql = db();
 
   const convRows = (await sql`
