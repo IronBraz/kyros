@@ -1,0 +1,59 @@
+name: CI
+
+# Runs on every PR and on pushes to the long-lived branches. Nothing here needs a database
+# or any secret: the unit tests cover pure logic (token signing, PIN hashing, settings merge,
+# cost arithmetic) and the rest is typecheck, lint and build. The end-to-end smoke test needs
+# a live deployment and a PIN, so it is run by hand against a preview URL, not from CI.
+
+on:
+  pull_request:
+  push:
+    branches: [main, feat/serverless]
+
+# A new push supersedes the run in flight for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` and not `npm install`: it fails loudly when the lockfile does not match
+      # package.json, which is exactly the class of problem that broke the first Vercel
+      # build (a lockfile missing the Linux rollup binary).
+      - name: Install
+        run: npm ci
+
+      # The wiki module is a gitignored build artefact. Without this the server does not
+      # typecheck, since it imports it.
+      - name: Generate the wiki module
+        run: npm run prebuild
+
+      - name: Typecheck the backend
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build the PWA
+        run: npm run build
+
+      # Non-blocking for now: the PWA carries 33 pre-existing `no-explicit-any` errors from
+      # before the migration. Flip this to a hard failure once they are cleared, otherwise
+      # CI is red from day one and everyone learns to ignore it.
+      - name: Lint
+        run: npm run lint -w pwa
+        continue-on-error: true
