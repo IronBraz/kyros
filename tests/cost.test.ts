@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { costEur } from '../server/lib/openrouter.js';
 
 describe('AI cost', () => {
-  it('matches the numbers the n8n chat workflow billed', () => {
-    // 1M in + 1M out on Haiku: $0.80 + $4.00 = $4.80, times the 0.92 EUR rate = €4.416.
-    expect(costEur('anthropic/claude-haiku-4-5', 1_000_000, 1_000_000)).toBeCloseTo(4.416, 6);
+  it('uses the rates measured against the live API, not the ones inherited from n8n', () => {
+    // Measured 2026-08-16 with `usage: { include: true }`: 3016 prompt tokens billed
+    // $0.003016 and 5 completion tokens billed $0.000025, i.e. $1.00 and $5.00 per million.
+    // The n8n table said 0.80/4.00 and under-counted every call by 25%.
+    // 1M in + 1M out = $6.00, times the 0.92 EUR rate = €5.52.
+    expect(costEur('anthropic/claude-haiku-4-5', 1_000_000, 1_000_000)).toBeCloseTo(5.52, 6);
+    expect(costEur('anthropic/claude-haiku-4-5', 3016, 5)).toBeCloseTo(0.003041 * 0.92, 5);
   });
 
   it('bills a realistic single turn at a fraction of a cent', () => {

@@ -8,16 +8,25 @@ import { config, requireEnv } from './config.js';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
-/** USD per token. The single source of truth for what a call costs. */
+/**
+ * USD per token. Only a fallback: when OpenRouter reports `usage.cost` we bill that instead,
+ * because it is what was actually charged.
+ *
+ * The Haiku figures were inherited from the n8n workflow as 0.80/4.00 per million and were
+ * WRONG. Measured against the live API on 2026-08-16 with `usage: { include: true }`:
+ * 3016 prompt tokens cost $0.003016 and 5 completion tokens cost $0.000025, i.e. 1.00/5.00
+ * per million. The old table under-counted every call by 25%, so the €3 cap would have been
+ * passed well before the counter said so.
+ */
 const RATES: Record<string, { input: number; output: number }> = {
-  'anthropic/claude-haiku-4-5': { input: 0.0000008, output: 0.000004 },
+  'anthropic/claude-haiku-4-5': { input: 0.000001, output: 0.000005 },
   'openai/gpt-4o-mini': { input: 0.00000015, output: 0.0000006 },
   'google/gemini-flash-1.5': { input: 0.0000000375, output: 0.00000015 },
   'mistralai/mistral-small': { input: 0.0000001, output: 0.0000003 },
 };
 
 /** Deliberately pessimistic: an unknown model must never look cheaper than it is. */
-const FALLBACK_RATE = { input: 0.000001, output: 0.000003 };
+const FALLBACK_RATE = { input: 0.000002, output: 0.000006 };
 
 const USD_TO_EUR = 0.92;
 
@@ -25,6 +34,21 @@ export function costEur(model: string, inputTokens: number, outputTokens: number
   const rate = RATES[model] ?? FALLBACK_RATE;
   const usd = inputTokens * rate.input + outputTokens * rate.output;
   return Number((usd * USD_TO_EUR).toFixed(6));
+}
+
+/**
+ * What the call actually cost, in EUR.
+ *
+ * Prefers OpenRouter's own `usage.cost` (USD, what it billed) over our table. A rate table
+ * is a guess that silently rots every time a provider changes its pricing, and the whole
+ * point of the budget cap is that it stops spending at the real number, not at ours.
+ */
+function billedEur(model: string, usage: OpenRouterResponse['usage'], input: number, output: number): number {
+  const reported = usage?.cost;
+  if (typeof reported === 'number' && reported >= 0) {
+    return Number((reported * USD_TO_EUR).toFixed(6));
+  }
+  return costEur(model, input, output);
 }
 
 export interface ChatTurn {
@@ -37,14 +61,36 @@ export interface CompletionResult {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  /** Prompt tokens served from cache, or null if the provider reported no cache figures. */
+  cachedTokens: number | null;
   costEur: number;
   latencyMs: number;
 }
 
 interface OpenRouterResponse {
   choices?: Array<{ message?: { content?: string } }>;
-  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    /** USD actually billed. Only present when the request asks for `usage: { include: true }`. */
+    cost?: number;
+    // Prompt-cache accounting. Providers disagree on the field names, so read all of them:
+    // OpenAI-compatible responses use prompt_tokens_details.cached_tokens, Anthropic-native
+    // ones use cache_read_input_tokens / cache_creation_input_tokens. Without this there is
+    // no way to tell whether cache_control is doing anything at all.
+    prompt_tokens_details?: { cached_tokens?: number };
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
   error?: { message?: string };
+}
+
+/** Cached prompt tokens on this call, or null when the provider reported nothing. */
+function cachedTokens(usage: OpenRouterResponse['usage']): number | null {
+  const read = usage?.prompt_tokens_details?.cached_tokens ?? usage?.cache_read_input_tokens;
+  const created = usage?.cache_creation_input_tokens;
+  if (read === undefined && created === undefined) return null;
+  return (read ?? 0) + (created ?? 0);
 }
 
 async function call(
@@ -129,6 +175,9 @@ export async function chatCompletion(
     {
       model,
       max_tokens: 1024,
+      // Ask for the real billed cost back, so the budget cap counts what was charged
+      // rather than what our rate table guesses.
+      usage: { include: true },
       messages: [
         {
           role: 'system',
@@ -151,13 +200,28 @@ export async function chatCompletion(
 
   const inputTokens = json.usage?.prompt_tokens ?? 0;
   const outputTokens = json.usage?.completion_tokens ?? 0;
+  const cached = cachedTokens(json.usage);
+
+  // Logged rather than assumed. cache_control on the wiki block is supposed to make the
+  // repeated ~10KB prefix cheap, but whether the provider honours it is not something to
+  // take on faith: `cached: null` in these logs means no caching is being reported, and the
+  // €3 budget is being spent at full price on every message.
+  console.log('[kyros] chat', {
+    model,
+    input: inputTokens,
+    output: outputTokens,
+    cached,
+    billed_usd: json.usage?.cost,
+    latency_ms: latencyMs,
+  });
 
   return {
     reply: json.choices?.[0]?.message?.content ?? '',
     model,
     inputTokens,
     outputTokens,
-    costEur: costEur(model, inputTokens, outputTokens),
+    cachedTokens: cached,
+    costEur: billedEur(model, json.usage, inputTokens, outputTokens),
     latencyMs,
   };
 }
@@ -205,6 +269,7 @@ export async function summarizeConversation(transcript: string): Promise<Summary
       {
         model,
         max_tokens: 300,
+        usage: { include: true },
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SUMMARY_SYSTEM },
@@ -221,7 +286,9 @@ export async function summarizeConversation(transcript: string): Promise<Summary
     return empty;
   }
 
-  const billed = { inputTokens, outputTokens, costEur: costEur(model, inputTokens, outputTokens) };
+  // Same billing path as the chat, which is the point: under n8n the summary hardcoded its
+  // own prices in SQL and the two halves of the same budget disagreed.
+  const billed = { inputTokens, outputTokens, costEur: billedEur(model, json.usage, inputTokens, outputTokens) };
 
   try {
     // response_format json_object should make this unnecessary, but the n8n version stripped
