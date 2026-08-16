@@ -7,11 +7,15 @@ interface Props {
   storeId: string;
 }
 
-const BUDGET_EUR = 3.0;
+// Only a fallback for the first render, before the API has answered. The real cap comes
+// from the server as cap_eur (KYROS_AI_BUDGET_EUR). Hardcoding it here was one of three
+// copies of the same number, so raising the budget silently left this bar reading wrong.
+const FALLBACK_BUDGET_EUR = 3.0;
 const POLL_INTERVAL_MS = 30_000;
 
 export const AIUsageCard: React.FC<Props> = ({ storeId }) => {
   const [usage, setUsage] = useState<AIUsage | null>(null);
+  const [budgetEur, setBudgetEur] = useState(FALLBACK_BUDGET_EUR);
   const [loading, setLoading] = useState(true);
 
   const fetchUsage = useCallback(async () => {
@@ -24,6 +28,8 @@ export const AIUsageCard: React.FC<Props> = ({ storeId }) => {
           total_output_tokens: res.data.total_output_tokens,
           total_cost_eur: res.data.total_cost_eur,
         });
+        const cap = (res.data as { cap_eur?: number }).cap_eur;
+        if (typeof cap === 'number' && cap > 0) setBudgetEur(cap);
       }
     } catch {
       // silently keep stale data
@@ -39,7 +45,7 @@ export const AIUsageCard: React.FC<Props> = ({ storeId }) => {
   }, [fetchUsage]);
 
   const costEur = usage?.total_cost_eur ?? 0;
-  const pct = Math.min((costEur / BUDGET_EUR) * 100, 100);
+  const pct = Math.min((costEur / budgetEur) * 100, 100);
   const totalTokens = (usage?.total_input_tokens ?? 0) + (usage?.total_output_tokens ?? 0);
 
   const barColor =
@@ -69,7 +75,7 @@ export const AIUsageCard: React.FC<Props> = ({ storeId }) => {
               <span className="text-2xl font-mono font-bold text-slate-50">
                 €{costEur.toFixed(3)}
               </span>
-              <span className="text-sm text-slate-500 ml-1">/ €{BUDGET_EUR.toFixed(0)}</span>
+              <span className="text-sm text-slate-500 ml-1">/ €{budgetEur.toFixed(2)}</span>
             </div>
             <div className="text-right">
               <div className="text-xs text-slate-500 flex items-center gap-1 justify-end">

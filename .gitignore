@@ -55,6 +55,12 @@ graphify-out/
 # TypeScript build info
 *.tsbuildinfo
 
+# Build artefact: knowledge/public/*.md baked into a module by scripts/generate-wiki.ts
+server/lib/wiki.generated.ts
+
+# Vercel CLI local state (.vercel/project.json links the repo to the Vercel project)
+.vercel/
+
 # Project-level exclusions (must never be re-added)
 OUTPUT/
 Documenti-Analisi/
@@ -77,3 +83,10 @@ knowledge/internal/
 
 # Claude Code — local permission overrides (machine-specific, not project config)
 .claude/settings.local.json
+
+# Appended by the Vercel CLI (`vercel link`, `vercel integration add`). Kept, but the
+# `!.env.example` negation has to stay LAST: a bare `.env*` shadows it, and the last
+# matching rule wins. The CLI re-appends `.env*` on every run, so re-check this after one.
+.vercel
+.env*
+!.env.example

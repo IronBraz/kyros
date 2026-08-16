@@ -1,7 +1,15 @@
 -- ==========================================
 -- Kyros MVP Schema - Fase 1
 -- Allineato a SPECS/04_Database.md (v2025-12-22)
--- Optimized for Postgres 18.1 (UUID v7 & JSONB)
+--
+-- Requisito reale: PostgreSQL >= 12. Misurato, non dedotto.
+-- L'intestazione diceva "Optimized for Postgres 18.1" ma nulla qui richiede PG18:
+-- uuid_generate_v7() e una funzione plpgsql scritta a mano (non usa la uuidv7() nativa
+-- di PG18), le colonne generate sono PG12+, FOR UPDATE SKIP LOCKED e PG9.5+, e pgcrypto
+-- e disponibile su Neon. Questo DDL si applica su Neon senza modifiche.
+--
+-- ATTENZIONE FUSO ORARIO: Neon gira in UTC, il Postgres locale girava su Europe/Rome.
+-- Ogni "data di oggi" qui dentro va calcolata nel fuso dello store, mai con CURRENT_DATE.
 -- ==========================================
 
 -- 0. EXTENSIONS & UTILITIES
@@ -69,8 +77,15 @@ CREATE TABLE IF NOT EXISTS sessions (
     entry_point_id UUID REFERENCES entry_points(id),
     service_point_id UUID REFERENCES service_points(id), 
     
-    status VARCHAR(20) NOT NULL DEFAULT 'waiting', -- 'waiting', 'called', 'serving', 'finished', 'missed', 'cancelled', 'abandoned'
-    ticket_code VARCHAR(10) NOT NULL, -- Es. "A-042" - Generato da trigger/app
+    -- CHECK aggiunto nella migrazione a Neon: prima era una VARCHAR libera, quindi un typo
+    -- in un workflow scriveva uno stato inesistente e la sessione spariva dalla board
+    -- senza che niente segnalasse l'errore.
+    status VARCHAR(20) NOT NULL DEFAULT 'waiting'
+        CHECK (status IN ('waiting', 'called', 'serving', 'finished', 'missed', 'cancelled', 'abandoned')),
+
+    -- NON esiste nessun trigger che lo popola, contrariamente a quanto dicono CLAUDE.md e
+    -- database/README.md. Il chiamante deve invocare generate_ticket_code(store_id).
+    ticket_code VARCHAR(10) NOT NULL, -- Es. "A-042"
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
     waiting_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -110,8 +125,11 @@ CREATE TABLE IF NOT EXISTS marketing_cards (
     
     valid_from TIMESTAMP WITH TIME ZONE,
     valid_to TIMESTAMP WITH TIME ZONE,
-    
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    -- L'API PATCH /admin/marketing-cards scriveva gia questa colonna, che pero non esisteva.
+    -- Bug noto dal CHANGELOG 1.2.0, chiuso qui.
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 5B. TICKET CODE SEQUENCE (Daily Reset)
@@ -126,34 +144,84 @@ CREATE TABLE IF NOT EXISTS ticket_sequences (
 );
 
 -- Funzione per generare il prossimo ticket code
+--
+-- Due correzioni rispetto alla versione girata su n8n/Postgres locale:
+--
+-- 1. FUSO ORARIO. Prima usava CURRENT_DATE, cioe la data del server. Andava bene finche il
+--    server girava su Europe/Rome. Neon gira in UTC, quindi in ora legale italiana la
+--    "mezzanotte" del server cade alle 02:00 italiane: senza questa correzione i ticket
+--    delle 00:00-02:00 continuerebbero la numerazione del giorno prima.
+--    Ora la data e calcolata nel fuso dello store.
+--
+-- 2. ROLLOVER. Il commento prometteva "A-999 poi B-001" da sempre, ma il codice faceva
+--    solo current_number + 1: il ticket dopo A-999 era "A-1000", 6 caratteri, fuori dal
+--    formato atteso dalla UI.
 CREATE OR REPLACE FUNCTION generate_ticket_code(p_store_id UUID)
 RETURNS VARCHAR(10) AS $$
 DECLARE
     v_prefix CHAR(1);
     v_number INT;
-    v_today DATE := CURRENT_DATE;
+    v_today  DATE;
 BEGIN
-    -- Inserisci o aggiorna la sequence per questo store
+    -- Data di oggi nel fuso dello store, non in quello del server.
+    -- COALESCE: se lo store non esiste o non ha timezone, non vogliamo un NULL silenzioso
+    -- che farebbe fallire ogni confronto piu sotto.
+    SELECT (NOW() AT TIME ZONE COALESCE(s.timezone, 'Europe/Rome'))::date
+      INTO v_today
+      FROM stores s
+     WHERE s.id = p_store_id;
+
+    IF v_today IS NULL THEN
+        RAISE EXCEPTION 'generate_ticket_code: store % not found', p_store_id;
+    END IF;
+
     INSERT INTO ticket_sequences (store_id, prefix, current_number, last_reset_date)
     VALUES (p_store_id, 'A', 1, v_today)
     ON CONFLICT (store_id) DO UPDATE SET
-        current_number = CASE 
+        current_number = CASE
+            -- Giorno nuovo: riparte da 1
             WHEN ticket_sequences.last_reset_date < v_today THEN 1
+            -- Stesso giorno ma sequenza esaurita: riparte da 1 con il prefisso successivo
+            WHEN ticket_sequences.current_number >= 999 THEN 1
             ELSE ticket_sequences.current_number + 1
+        END,
+        prefix = CASE
+            WHEN ticket_sequences.last_reset_date < v_today THEN 'A'
+            -- Z e l'ultimo: si torna ad A. Servirebbero 25.974 ticket in un solo giorno
+            -- nello stesso store per arrivarci; a quel punto si avrebbero codici duplicati,
+            -- ma e comunque meglio di un carattere non alfabetico nella UI.
+            WHEN ticket_sequences.current_number >= 999 THEN
+                CASE WHEN ticket_sequences.prefix = 'Z' THEN 'A'
+                     ELSE chr(ascii(ticket_sequences.prefix) + 1) END
+            ELSE ticket_sequences.prefix
         END,
         last_reset_date = v_today
     RETURNING prefix, current_number INTO v_prefix, v_number;
-    
-    -- Formato: A-001, A-002, ... A-999, poi B-001, etc.
+
+    -- Formato: A-001, A-002, ... A-999, poi B-001, ...
     RETURN v_prefix || '-' || LPAD(v_number::TEXT, 3, '0');
 END;
 $$ LANGUAGE plpgsql;
+
+-- Data di oggi nel fuso di uno store. Serve a tutte le query "di oggi" (conteggi serviti,
+-- persi, reset delle sequenze) che sotto n8n usavano CURRENT_DATE o DATE(created_at) e che
+-- su Neon slitterebbero di 1-2 ore.
+CREATE OR REPLACE FUNCTION store_today(p_store_id UUID)
+RETURNS DATE AS $$
+    SELECT (NOW() AT TIME ZONE COALESCE(s.timezone, 'Europe/Rome'))::date
+      FROM stores s
+     WHERE s.id = p_store_id;
+$$ LANGUAGE sql STABLE;
 
 -- 5C. ADMIN ACCESS (Simple Gate Code Authentication)
 CREATE TABLE IF NOT EXISTS admin_access (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
-    access_code VARCHAR(20) NOT NULL, -- PIN o password semplice
+    -- Era `access_code VARCHAR(20)`, cioe il PIN in chiaro nel database.
+    -- Ora contiene solo l'hash, nel formato scrypt$<salt-hex>$<hash-hex> (server/lib/pin.ts).
+    -- Conseguenza sul login: non si puo piu fare il lookup in SQL con WHERE access_code = $2.
+    -- Si selezionano le righe attive dello store e si verifica in JS, una per una.
+    access_code_hash TEXT NOT NULL,
     label VARCHAR(50) DEFAULT 'Default', -- Es. "Codice Manager", "Codice Cassa"
     is_active BOOLEAN DEFAULT true,
     last_used_at TIMESTAMP WITH TIME ZONE,
@@ -181,7 +249,9 @@ CREATE INDEX IF NOT EXISTS idx_sessions_service_point ON sessions(service_point_
 CREATE INDEX IF NOT EXISTS idx_sessions_ai_context ON sessions USING GIN (ai_context);
 
 -- Entry Points: Lookup veloce QR
-CREATE INDEX IF NOT EXISTS idx_entry_points_slug ON entry_points(slug);
+-- idx_entry_points_slug rimosso: il vincolo `slug VARCHAR(100) UNIQUE` crea gia da solo un
+-- indice B-tree su slug. Ne teneva due identici, con doppio costo di scrittura e zero
+-- guadagno in lettura.
 CREATE INDEX IF NOT EXISTS idx_entry_points_store ON entry_points(store_id);
 
 -- Marketing Cards: Feed attivo
@@ -253,3 +323,42 @@ CREATE INDEX IF NOT EXISTS idx_ai_summaries_status
 INSERT INTO ai_usage_monthly (year_month)
 VALUES (TO_CHAR(NOW(), 'YYYY-MM'))
 ON CONFLICT (year_month) DO NOTHING;
+
+-- 5E. SERVERLESS SUPPORT TABLES
+-- Aggiunte con la migrazione a Vercel + Neon (2026-08). Non esistevano sotto n8n, dove
+-- il janitor era un cron dedicato e non c'era alcun rate limiting.
+
+-- Lock del janitor "lazy".
+--
+-- Su Vercel Hobby i cron sono al massimo 2 e solo giornalieri, quindi "*/5 * * * *" non
+-- esiste. Il janitor gira invece dentro GET /admin/queue/status, che la Control Room chiama
+-- ogni 2-5 secondi, e questa tabella e cio che impedisce a quelle centinaia di chiamate di
+-- lanciarlo centinaia di volte.
+--
+-- L'acquisizione e una singola UPDATE ... WHERE last_run_at < NOW() - interval: o aggiorna
+-- una riga (e il chiamante ha il lock) o zero righe (e qualcun altro l'ha appena preso).
+-- Atomica senza bisogno di una transazione esplicita, quindi funziona sul driver HTTP.
+--
+-- Effetto netto: in demo il janitor gira ogni 60 secondi invece che ogni 5 minuti.
+CREATE TABLE IF NOT EXISTS job_runs (
+    job         TEXT        PRIMARY KEY,
+    last_run_at TIMESTAMPTZ NOT NULL
+);
+
+-- Token bucket per il rate limiting, su Postgres invece che su Redis.
+--
+-- Un bucket per (azione + soggetto), es. "pin:<store_id>:<ip_hash>". L'IP e sempre hashato
+-- con KYROS_SESSION_SECRET prima di finire qui: non memorizziamo IP in chiaro
+-- (coerente con specs/09_Security_Privacy.md).
+--
+-- Il motivo principale: POST /admin/auth/verify. Un PIN a 4 cifre sono 10.000 combinazioni,
+-- sotto n8n provabili senza alcun limite.
+CREATE TABLE IF NOT EXISTS rate_limits (
+    bucket   TEXT        PRIMARY KEY,
+    tokens   INT         NOT NULL,
+    reset_at TIMESTAMPTZ NOT NULL
+);
+
+-- Le righe scadute non vengono mai lette (la logica le tratta come bucket pieni), ma senza
+-- questo indice la pulizia periodica dovrebbe fare un seq scan sull'intera tabella.
+CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at);

@@ -1,7 +1,9 @@
 import { ApiResponse } from '@/types/shared';
 
-// Use relative path to leverage Caddy proxy (avoids CORS issues)
-export const API_BASE = '';
+// Empty means "same origin": on Vercel the SPA and the API function share one host, so
+// /api/v1/* resolves without CORS. Overridable at build time only to point a local dev
+// build at a preview deployment; leave it unset in production.
+export const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
 // Generic error handler for API responses
 export const handleApiError = async (res: Response): Promise<ApiResponse<any>> => {

@@ -1,0 +1,38 @@
+{
+  "name": "kyros",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "pwa"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev -w pwa",
+    "prebuild": "tsx scripts/generate-wiki.ts",
+    "build": "npm run build -w pwa",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:apply": "tsx scripts/db-apply.ts",
+    "db:seed": "tsx scripts/db-seed.ts",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@vercel/functions": "^3.9.3",
+    "hono": "^4.13.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.23.12",
+    "typescript": "~5.8.2",
+    "vite": "^6.4.3",
+    "vitest": "^4.1.10"
+  },
+  "comments": {
+    "devDependencies.vite": "Pinned to the PWA's major on purpose. vitest 4 depends on vite 8, and without this npm hoists vite 8 to the root: @vitejs/plugin-react dedupes against it while the PWA keeps its own nested vite 6, and vite.config.ts then fails to typecheck against two incompatible Plugin types. Declaring it here makes the hoisted copy the one the PWA wants; vitest nests its own. Remove when the PWA moves to vite 8."
+  }
+}
