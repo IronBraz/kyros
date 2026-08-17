@@ -14,12 +14,16 @@
  *
  * Idempotent: re-running updates the same rows instead of creating duplicates.
  */
+import './load-env.js'; // side effect: reads .env.local. Must stay first.
 import { Client } from '@neondatabase/serverless';
 import { hashPin } from '../server/lib/pin.js';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
-  console.error('DATABASE_URL is not set. Put it in .env.local or export it before running.');
+  console.error(
+    'DATABASE_URL is not set, and .env.local does not provide it.\n' +
+      '  Fix:  npx vercel env pull .env.local'
+  );
   process.exit(1);
 }
 
