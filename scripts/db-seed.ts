@@ -101,18 +101,22 @@ await client.connect();
 try {
   const pinHash = await hashPin(pin);
 
-  const { rows: tenantRows } = await client.query<{ id: string }>(
-    `INSERT INTO tenants (name) VALUES ($1)
-     ON CONFLICT DO NOTHING
-     RETURNING id`,
+  // Look up FIRST, insert only when genuinely absent.
+  //
+  // This used to INSERT ... ON CONFLICT DO NOTHING RETURNING id and fall back to a SELECT
+  // when the insert returned nothing. tenants has no unique constraint on name, so the
+  // insert always succeeded, always returned an id, and the fallback never ran: every run
+  // made a new tenant, a new store under it (the store lookup below is scoped by tenant_id),
+  // and a second copy of everything. It bit for real on 2026-08-17, when re-seeding to change
+  // the admin PIN put the new PIN on a duplicate store and left the old one live.
+  const { rows: found } = await client.query<{ id: string }>(
+    `SELECT id FROM tenants WHERE name = $1 ORDER BY created_at LIMIT 1`,
     [TENANT_NAME]
   );
-  // tenants has no unique constraint on name, so ON CONFLICT never fires. Look it up
-  // instead, and only insert when it is genuinely absent.
-  let tenantId = tenantRows[0]?.id;
+  let tenantId = found[0]?.id;
   if (!tenantId) {
     const { rows } = await client.query<{ id: string }>(
-      `SELECT id FROM tenants WHERE name = $1 ORDER BY created_at LIMIT 1`,
+      `INSERT INTO tenants (name) VALUES ($1) RETURNING id`,
       [TENANT_NAME]
     );
     tenantId = rows[0]?.id;
