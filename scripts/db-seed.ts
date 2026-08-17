@@ -156,16 +156,30 @@ try {
   );
   console.log(`[db-seed] admin   PIN hashed (scrypt), label "Manager"`);
 
+  // The three physical entry points, one QR or NFC tag each. `macchine` and `cassa` existed
+  // under n8n and came back on 2026-08-17: the migration started from an empty database on
+  // purpose, so the tags already stuck to the shelves pointed at slugs that no longer
+  // resolved and the customer got "Invalid QR code".
+  //
   // slug is globally UNIQUE, so this upsert also re-points an existing slug at this store.
-  const { rows: epRows } = await client.query<{ id: string; slug: string }>(
-    `INSERT INTO entry_points (store_id, name, slug)
-     VALUES ($1, 'Ingresso Principale', 'main-entrance')
-     ON CONFLICT (slug) DO UPDATE SET store_id = EXCLUDED.store_id, name = EXCLUDED.name
-     RETURNING id, slug`,
-    [storeId]
-  );
-  const entryPoint = epRows[0];
-  console.log(`[db-seed] entry   ${entryPoint?.id}  ${PUBLIC_URL}/q/${entryPoint?.slug}`);
+  const entryPoints: Array<{ id: string; slug: string }> = [];
+  for (const [name, slug] of [
+    ['Ingresso Principale', 'main-entrance'],
+    ['Area Macchine', 'macchine'],
+    ['Cassa', 'cassa'],
+  ]) {
+    const { rows } = await client.query<{ id: string; slug: string }>(
+      `INSERT INTO entry_points (store_id, name, slug)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (slug) DO UPDATE SET store_id = EXCLUDED.store_id, name = EXCLUDED.name
+       RETURNING id, slug`,
+      [storeId, name, slug]
+    );
+    if (rows[0]) entryPoints.push(rows[0]);
+  }
+  for (const ep of entryPoints) {
+    console.log(`[db-seed] entry   ${ep.id}  ${PUBLIC_URL}/q/${ep.slug}`);
+  }
 
   for (const name of ['Cassa 1', 'Cassa 2']) {
     const { rows } = await client.query<{ id: string }>(
@@ -210,7 +224,9 @@ try {
 
   console.log('\n[db-seed] done. Values you need:');
   console.log(`  store_id        ${storeId}`);
-  console.log(`  entry point URL ${PUBLIC_URL}/q/${entryPoint?.slug}`);
+  for (const ep of entryPoints) {
+    console.log(`  entry point URL ${PUBLIC_URL}/q/${ep.slug}`);
+  }
 } finally {
   await client.end();
 }
