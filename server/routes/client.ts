@@ -228,16 +228,21 @@ client.get('/marketing-cards', async (c) => {
      LIMIT 10
   `) as Array<Record<string, unknown>>;
 
-  // camelCase here, snake_case in the admin endpoint. Not a choice, just what each consumer
-  // already expects; changing either means touching the frontend.
+  // `icon` and `theme`, not `iconName`/`themeColor`. This endpoint used to send the latter
+  // pair while WaitingRoom spread the response straight into <MarketingCard {...card} />,
+  // which destructures `icon` and `theme`. Both were therefore always undefined and every
+  // card in the waiting room fell back to the Info icon on the blue theme, whatever the
+  // store had configured. Nothing ever read the camelCase names -- grep for iconName in
+  // pwa/src returns nothing -- so renaming here is the whole fix, and it also lines the
+  // endpoint up with the admin one, which already aliases to icon/theme.
   return ok(c, {
     cards: cards.map((card) => ({
       id: card.id,
       type: card.type,
       title: card.title,
       content: card.content,
-      themeColor: card.theme_color ?? 'blue',
-      iconName: card.icon_name ?? 'info',
+      theme: card.theme_color ?? 'blue',
+      icon: card.icon_name ?? 'Info',
       actionUrl: card.action_url,
     })),
   });

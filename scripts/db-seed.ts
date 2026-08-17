@@ -17,6 +17,7 @@
 import './load-env.js'; // side effect: reads .env.local. Must stay first.
 import { Client } from '@neondatabase/serverless';
 import { hashPin } from '../server/lib/pin.js';
+import { MARKETING_CARDS } from './marketing-cards.js';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -68,32 +69,8 @@ const STORE_SETTINGS = {
   qr_base_url: PUBLIC_URL,
 };
 
-const MARKETING_CARDS = [
-  {
-    type: 'INFO',
-    title: 'Benvenuto da Kyros',
-    content: 'Sei in coda. Ti avvisiamo noi quando tocca a te: puoi guardarti intorno.',
-    icon_name: 'Info',
-    theme_color: 'teal',
-    priority: 30,
-  },
-  {
-    type: 'PROMO',
-    title: 'Novita in negozio',
-    content: 'Chiedi al concierge cosa e appena arrivato: risponde qui in chat.',
-    icon_name: 'Sparkles',
-    theme_color: 'blue',
-    priority: 20,
-  },
-  {
-    type: 'TRIVIA',
-    title: 'Lo sapevi?',
-    content: "L'attesa percepita si accorcia di circa un terzo quando sai quanto manca.",
-    icon_name: 'Lightbulb',
-    theme_color: 'purple',
-    priority: 10,
-  },
-];
+// The card list lives in scripts/marketing-cards.ts, shared with npm run db:cards, which
+// reconciles the feed on an already-seeded store without needing the admin PIN.
 
 const client = new Client(url);
 await client.connect();

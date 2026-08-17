@@ -1,247 +1,228 @@
-# Kyros - Infrastructure & Backend Architecture (Fase 1)
+# Kyros - Infrastructure & Backend Architecture
 
-**Ambito:** Workflow n8n, Integrazioni, Sicurezza e Deployment.
-**Riferimenti:** Supporta i flussi definiti in `03_Architettura_Funzionale.md`.
+**Ambito:** backend, API, sicurezza, job in background.
+**Supporta i flussi definiti in** `03_Architettura_Funzionale.md`.
+**Aggiornato:** 2026-08-17, dopo la migrazione da n8n a Vercel.
 
----
-
-## 1. Stack Tecnologico
-*   **Engine Backend**: n8n (Self-hosted su Docker).
-*   **Database**: PostgreSQL 18.1.
-*   **Real-time**: Socket.io Server (Node.js ultra-light).
-*   **Proxy/Edge**: Caddy (HTTPS, Reverse Proxy, Static Assets).
-*   **Infrastruttura**: Stack "NeuroForge" (Docker Compose su VPS Linux).
+> **Nota sulla storia.** Fino al 2026-08-16 questo documento descriveva un backend fatto di 32
+> workflow n8n self-hosted, con Socket.io e Caddy dietro un Cloudflare Tunnel. Quella
+> architettura non esiste più. È congelata al tag `v1.5.0-n8n-final` e al branch `legacy/n8n`,
+> con l'export letterale dei workflow vivi in `n8n/live_export_2026-08-16/`. Il presente
+> documento descrive solo ciò che gira adesso.
 
 ---
 
-## 2. API Design & Workflow Strategy
+## 1. Stack tecnologico
 
-### A. Core Sub-Workflows (n8n)
-Per mantenere pulita l'architettura, ogni azione complessa è delegata a sub-workflow riutilizzabili:
-1.  **`SUB_Auth_Manager`**: Gestisce i token JWT per le sessioni Admin.
-2.  **`SUB_Socket_Emitter`**: Invia eventi al Socket Server (Ding-Dong, New Ticket, etc.).
-3.  **`SUB_Response_Standardizer`**: (Interface Contract) Formatta uniformemente la risposta HTTP finale.
+| Pezzo | Cosa è | Dove sta |
+| :--- | :--- | :--- |
+| **Backend** | **una sola** funzione serverless che monta un'app Hono | `api/index.ts` + `server/` |
+| **Database** | Neon serverless Postgres 18, regione `eu-central-1` | driver HTTP `@neondatabase/serverless` |
+| **Frontend** | React 19 + TypeScript + Vite + Tailwind + Zustand | `pwa/` |
+| **Hosting** | Vercel, team `brainforge1`, progetto `kyros`, piano Hobby, regione `fra1` | `vercel.json` |
+| **Real-time** | **nessuno.** Polling HTTP dal client | — |
+| **Dominio** | `kyros.neuroforge.club` (CNAME su Cloudflare, proxy **disattivato**) | — |
 
-#### Schema Response SUCCESS (2xx):
+### Perché una funzione sola e non una per route
+Il piano Hobby limita il numero di funzioni. Una sola funzione tiene caldo un unico bundle,
+riduce i cold start e permette middleware veri (`adminGuard`) invece di copiare la stessa
+validazione in cima a ogni file.
+
+### Perché il driver HTTP e non `pg`
+Ogni invocazione serverless è un processo nuovo. Un connection pool non verrebbe mai riusato e
+finirebbe per esaurire le connessioni del database. Dove serve atomicità su più statement si usa
+`sql.transaction([...])`.
+
+### Perché niente CORS
+La SPA e le API stanno sullo stesso host, quindi `API_BASE` resta `''` e non c'è nessuna
+preflight da gestire. Le rewrite in `vercel.json` mandano `/api/*` alla funzione e tutto il
+resto a `index.html`.
+
+---
+
+## 2. Contratto di risposta
+
+Ogni risposta passa da `server/lib/respond.ts`, che eredita il formato del vecchio
+`SUB_Response_Standardizer`.
+
+**Successo (2xx):**
 ```json
 {
   "success": true,
-  "data": { ... },
-  "meta": { 
-    "timestamp": "2025-12-22T10:00:00Z",
-    "request_id": "uuid"
-  }
+  "data": { },
+  "meta": { "timestamp": "2026-08-17T10:00:00Z", "request_id": "uuid" }
 }
 ```
 
-#### Schema Response ERROR (4xx/5xx):
+**Errore (4xx/5xx):**
+```json
+{
+  "success": false,
+  "error": { "code": "ERROR_CODE", "message": "Human-readable message", "data": { } },
+  "meta": { "timestamp": "2026-08-17T10:00:00Z", "request_id": "uuid" }
+}
+```
+
+Gli errori non gestiti sono intercettati da `app.onError` e non espongono mai lo stack trace.
+Una route inesistente risponde 404 con `NOT_FOUND` e il messaggio `No route for <METODO> <path>`.
+
+---
+
+## 3. Regola che è facile sbagliare: niente `:id` nel path
+
+**Non esiste un solo path parameter in tutta l'API.** L'id viaggia nel body (POST/PATCH/DELETE)
+o nella query string (GET). È la forma che avevano i webhook n8n e che il frontend parla ancora.
+Scrivere `POST /sessions/:id/abandon` a memoria produce un 404.
+
+La lista qui sotto è quella reale; la fonte di verità è `server/routes/*.ts`.
+
+---
+
+## 4. Client API — prefisso `/api/v1/client`
+
+Nessuna autenticazione. Il possesso del `session_id` è la credenziale.
+
+| Metodo | Route | Cosa fa |
+| :--- | :--- | :--- |
+| POST | `/sessions` | Crea la sessione in coda. Valida lo slug dell'entry point, controlla `accepting_tickets`, genera il `ticket_code` |
+| GET | `/sessions?session_id=` | Recupero sessione dopo un refresh di pagina |
+| POST | `/sessions/heartbeat` | Keep-alive ogni 60s. `session_id` nel body |
+| POST | `/sessions/abandon` | Il cliente lascia la coda. `session_id` nel body |
+| GET | `/marketing-cards?store_id=` | Feed contenuti della sala d'attesa |
+| POST | `/chat/start` | Apre o riprende la conversazione col concierge |
+| POST | `/chat/send` | Un turno di conversazione |
+
+### POST /sessions — coda chiusa
+Se `stores.settings->'queue'->>'accepting_tickets'` è `false`, risponde **503**:
 ```json
 {
   "success": false,
   "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable message",
-    "details": { ... }
-  },
-  "meta": { 
-    "timestamp": "2025-12-22T10:00:00Z",
-    "request_id": "uuid"
+    "code": "QUEUE_CLOSED",
+    "message": "We're not accepting new customers at the moment. Please speak to our staff.",
+    "data": { "store_name": "Milano Centro", "custom_message": true }
   }
 }
 ```
 
----
+### GET /marketing-cards — nomi dei campi
+Restituisce `icon` e `theme`, **non** `icon_name`/`theme_color` e **non** `iconName`/`themeColor`.
+`pwa/src/components/shared/MarketingCard.tsx` fa lo spread della risposta e destruttura proprio
+quei due nomi. I valori ammessi sono chiusi da quel componente:
 
-### B. Public API (Client PWA) - Prefix: `/api/v1/client`
-
-#### 1. POST /api/v1/client/sessions
-*   **Trigger**: Scansione QR code da cliente.
-*   **Logic**:
-    1.  Validate Entry Point (slug exists).
-    1.5 **Check store accepting**: Query `stores.settings->'queue'->>'accepting_tickets'`
-        - Se `false`: Return `503 QUEUE_CLOSED` con messaggio personalizzato
-    2.  Check device fingerprint (anti-spam).
-    3.  DB Insert con `ticket_code = generate_ticket_code(store_id)`.
-    4.  Calcola stima attesa: `(COUNT waiting * avg_service_time)`.
-*   **Response 503** (Queue Closed):
-    ```json
-    {
-      "success": false,
-      "error": {
-        "code": "QUEUE_CLOSED",
-        "message": "We're not accepting new customers at the moment. Please speak to our staff.",
-        "data": {
-          "store_name": "Milano Centro",
-          "custom_message": true
-        }
-      }
-    }
-    ```
-
-#### 2. GET /api/v1/client/sessions/:id
-*   **Trigger**: Ricarica pagina o riconnessione.
-*   **Response**: Status corrente, ticket_code, posizione, stima attesa.
-
-#### 3. POST /api/v1/client/sessions/:id/heartbeat
-*   **Trigger**: Timer client ogni 60 secondi.
-*   **Logic**: `UPDATE sessions SET last_seen_at = NOW() WHERE id = $1`.
-
-#### 4. POST /api/v1/client/sessions/:id/abandon
-*   **Trigger**: Cliente clicca "Abbandona Coda".
-*   **Logic**: `UPDATE sessions SET status = 'abandoned', finished_at = NOW()`.
+- `icon`: `Gift` | `Coffee` | `Star` | `Info` — qualunque altra cosa disegna `Info`
+- `theme`: `purple` | `orange` | `blue` | `green` — qualunque altra cosa disegna `blue`
 
 ---
 
-### C. Control Room API (Admin) - Prefix: `/api/v1/admin`
+## 5. Admin API — prefisso `/api/v1/admin`
 
-#### 0. POST /api/v1/admin/auth/verify
-*   **Purpose**: Verifica PIN e crea sessione admin.
-*   **Input Body**: 
-    ```json
-    { 
-      "store_id": "uuid",
-      "access_code": "<pin>"
-    }
-    ```
-*   **Logic**:
-    1.  Query: `SELECT * FROM admin_access WHERE store_id = $1 AND access_code = $2 AND is_active = true`
-    2.  Se trovato: Update `last_used_at = NOW()`
-    3.  Genera session token (semplice UUID, non JWT)
-*   **Response 200** (Success):
-    ```json
-    {
-      "success": true,
-      "data": {
-        "session_token": "uuid-sessione",
-        "store_name": "Milano Centro",
-        "expires_at": "2025-12-23T18:00:00Z",
-        "label": "Codice Cassa"
-      }
-    }
-    ```
-*   **Response 401** (Invalid):
-    ```json
-    {
-      "success": false,
-      "error": {
-        "code": "INVALID_ACCESS_CODE",
-        "message": "Codice non valido"
-      }
-    }
-    ```
-*   **Response 404** (Store not found):
-    ```json
-    {
-      "success": false,
-      "error": {
-        "code": "STORE_NOT_FOUND",
-        "message": "Store non trovato"
-      }
-    }
-    ```
+Tutto tranne `auth/verify` e `auth/stores` sta dietro `adminGuard`, dichiarato **dopo** quelle
+due di proposito.
 
-#### 0.1 POST /api/v1/admin/auth/logout
-*   **Purpose**: Invalida sessione (client-side, no server state).
-*   **Logic**: Il client cancella localStorage. Server-side è stateless.
-*   **Response 200**: `{ "success": true }`
+| Metodo | Route | Cosa fa |
+| :--- | :--- | :--- |
+| GET | `/auth/stores` | Lista store per la schermata di login. **Pubblica** |
+| POST | `/auth/verify` | Login col PIN, restituisce `session_token` |
+| GET | `/queue/status` | Board completa: waiting, called, serving, conteggi, `accepting_tickets`, stima attesa |
+| GET | `/queue/current` | Stato coda per il display del banco |
+| POST | `/queue/call-next` | Chiamata FIFO con lock `FOR UPDATE SKIP LOCKED` |
+| PATCH | `/sessions/status` | Avanza una sessione nel suo ciclo di vita |
+| GET/PATCH | `/stores/settings` | Legge e aggiorna la configurazione dello store |
+| GET/POST | `/entry-points` | Elenca e crea entry point |
+| DELETE | `/entry-points/delete` | Cancella un entry point. Rifiuta se ha sessioni `waiting` o `called` |
+| GET/POST/PATCH/DELETE | `/marketing-cards` | CRUD del feed contenuti |
+| POST | `/wiki/reload` | Rilegge la wiki incorporata nel bundle |
+| GET | `/usage` | Spesa AI del mese contro il tetto |
 
-#### 0.2 GET /api/v1/admin/auth/stores
-*   **Purpose**: Lista stores disponibili per login (senza auth).
-*   **Response 200**:
-    ```json
-    {
-      "success": true,
-      "data": {
-        "stores": [
-          { "id": "uuid", "name": "Milano Centro" },
-          { "id": "uuid", "name": "Roma Termini" }
-        ]
-      }
-    }
-    ```
-*   **Note**: Questo endpoint è pubblico per permettere la selezione store prima del PIN.
+### Autenticazione: token HMAC, non JWT, non UUID
+`server/lib/auth.ts`. Il token è:
 
-> **Autenticazione Control Room:**
-> Tutti gli endpoint `/api/v1/admin/*` (eccetto `/auth/*`) richiedono header:
-> ```
-> X-Admin-Session: <session_token>
-> ```
-> Il token è validato controllando che esista in localStorage e non sia scaduto (8h).
-> In MVP la validazione è client-side. In SCALE-UP sarà server-side con Redis.
+```
+base64url(payload) "." base64url(HMAC-SHA256(payload, KYROS_SESSION_SECRET))
+```
 
-#### 1. GET /api/v1/admin/health
-*   **Purpose**: Health check per monitoring.
+con payload `{ aid, sid, tid, exp }` (admin id, store id, tenant id, scadenza unix).
+Viaggia nell'header **`X-Admin-Session`**, non in `Authorization: Bearer`.
 
-#### 2. GET /api/v1/admin/init
-*   **Purpose**: Zero State Check per wizard primo avvio.
+La validazione è **server-side**, non client-side come diceva la versione MVP di questo
+documento: la firma non è falsificabile senza il segreto. Se `KYROS_SESSION_SECRET` manca, il
+server rifiuta ogni sessione admin invece di lasciar passare tutti.
 
-#### 3. POST /api/v1/admin/queue/call-next
-*   **Logic**: 
-    1. Lock FIFO (`FOR UPDATE SKIP LOCKED`).
-    2. Update status a `called`.
-    3. Notifica Socket.
+`KYROS_SESSION_SECRET` ha **un valore diverso per Production, Preview e Development**
+(separati il 2026-08-17). Un token generato in locale non vale in produzione. Ruotarlo invalida
+tutte le sessioni admin aperte: chi è dentro deve rifare il login col PIN.
 
-#### 4. GET /api/v1/admin/queue/current
-*   **Purpose**: Lista coda attuale (waiting + called) per display Counter.
+### Il PIN
+`admin_access.access_code_hash`, hash **scrypt** (`server/lib/pin.ts`). Il PIN in chiaro non
+esiste da nessuna parte, né nel database né nel repo. Si imposta con `npm run db:seed` passando
+`KYROS_SEED_ADMIN_PIN`, che accetta 4-6 cifre e rifiuta `1234` perché è pubblicato nella history
+del repo.
 
-#### 5. PATCH /api/v1/admin/stores/:id/settings
-*   **Purpose**: Aggiorna configurazione store (incluso toggle ON/OFF).
-*   **Input Body** (partial update):
-    ```json
-    {
-      "queue": {
-        "accepting_tickets": false,
-        "closed_message": "Custom closure message"
-      }
-    }
-    ```
-*   **Logic**: 
-    1.  Merge JSONB con `jsonb_set()`
-    2.  Se `accepting_tickets` cambia: log evento per audit
-*   **Response 200**: `{ "success": true, "data": { "settings": {...} } }`
-
-#### 6. GET /api/v1/admin/stores/:id/queue/status
-*   **Purpose**: Stato rapido della coda per header/widget.
-*   **Response 200**:
-    ```json
-    {
-      "success": true,
-      "data": {
-        "accepting_tickets": true,
-        "waiting_count": 5,
-        "called_count": 1,
-        "avg_wait_minutes": 8,
-        "system_status": "active"
-      }
-    }
-    ```
-*   **Note**: `system_status` può essere: `active`, `paused` (toggle off ma coda da smaltire), `closed` (toggle off e coda vuota)
+### La regola che chiude le IDOR
+**`store_id` arriva sempre dal token di sessione, mai dalla query string o dal body**, anche se
+il frontend continua a mandarlo. Chiedere la board di un altro store restituisce la propria.
 
 ---
 
-### D. Background Jobs (n8n Scheduled Workflows)
+## 6. Job in background
 
-#### 1. JOB_Janitor (Queue Cleanup)
-*   **Trigger**: Ogni 5 minuti.
-*   **Logic**:
-    ```sql
-    -- Step 1: Marca 'abandoned' i ticket waiting senza heartbeat da 15 min
-    UPDATE sessions SET status = 'abandoned', finished_at = NOW()
-    WHERE status = 'waiting' AND last_seen_at < NOW() - INTERVAL '15 minutes';
-    
-    -- Step 2: Marca 'missed' i ticket chiamati ma non serviti da 5 min
-    UPDATE sessions SET status = 'missed', missed_at = NOW()
-    WHERE status = 'called' AND called_at < NOW() - INTERVAL '5 minutes';
-    ```
+### Janitor
+`server/lib/janitor.ts`, non più un workflow n8n. Fa due cose:
 
-#### 2. JOB_Daily_Reset (Ticket Sequence)
-*   **Trigger**: Ogni giorno alle 00:05.
-*   **Purpose**: Forza reset sequence ticket.
+```sql
+-- ghost: waiting senza heartbeat da queue.ghost_timeout_minutes (default 30)
+UPDATE sessions SET status = 'abandoned', finished_at = NOW()
+ WHERE status = 'waiting' AND last_seen_at < NOW() - INTERVAL '<ghost> minutes';
+
+-- missed: chiamati e mai serviti da queue.called_timeout_minutes (default 5)
+UPDATE sessions SET status = 'missed', missed_at = NOW()
+ WHERE status = 'called' AND called_at < NOW() - INTERVAL '<called> minutes';
+```
+
+**Gira pigro, agganciato alle richieste vere** tramite `waitUntil()`, dietro un lock atomico
+sulla tabella `job_runs`. Motivo: i cron del piano Hobby scattano una volta al giorno, il che
+per una coda è inutile. Il cron notturno resta come rete di sicurezza per quando il negozio è
+chiuso e nessuno genera richieste.
+
+### Cron notturno — `GET /api/internal/cron/daily`, 02:00 UTC
+Dichiarato in `vercel.json`. Fa tre cose: sweep completo senza throttle, reset delle
+`ticket_sequences` di ogni store la cui data locale è avanzata, pulizia dei bucket scaduti del
+rate limiter.
+
+**Le route `/api/internal/*` non sono raggiungibili da un browser.** Richiedono
+`Authorization: Bearer $CRON_SECRET`, confrontato in tempo costante; `CRON_SECRET` lo inietta
+Vercel da solo. Se manca, l'endpoint resta chiuso invece di aprirsi a tutti. È la differenza
+con l'era n8n, dove `internal/ai/summarize` era un webhook pubblico che chiunque poteva chiamare
+per bruciare il budget AI.
+
+### Reset giornaliero dei ticket
+Succede in due punti indipendenti, ed è voluto: la funzione SQL `generate_ticket_code()` azzera
+la sequenza da sola alla prima emissione del giorno (`last_reset_date < store_today()`), e il
+cron notturno la azzera comunque per gli store che non hanno emesso nulla.
+
+**Mai `CURRENT_DATE`.** Neon gira in UTC e ogni store ha il suo fuso. Qualunque cosa significhi
+"oggi" passa da `store_today(store_id)`.
 
 ---
 
-## 3. Real-time Bridge (Socket.io)
-Il server Socket.io riceve comandi da n8n (via secret key interna) e li propaga ai client:
-*   `TICKET_CALLED`: Il client specifico riceve la notifica "È il tuo turno".
-*   `QUEUE_UPDATE`: Tutti i client nello store ricevono la nuova posizione.
-*   `ADMIN_DING`: Il display di sala emette il suono e mostra il numero.
+## 7. Real-time: non c'è
+
+Il client fa **polling HTTP**. Non esiste Socket.io in questo repo e non è mai esistito:
+`SUB_Socket_Emitter` era prosa nelle specifiche, mai codice funzionante. Gli eventi
+`TICKET_CALLED`, `QUEUE_UPDATE` e `ADMIN_DING` descritti nella vecchia versione di questo
+documento non sono mai stati implementati. Il client scopre di essere stato chiamato al giro di
+polling successivo.
+
+---
+
+## 8. Sicurezza applicativa
+
+- **SQL**: sempre template taggati, che parametrizzano. **Mai** concatenazione di stringhe.
+- **Rate limit**: `server/lib/ratelimit.ts`. L'IP non viene salvato in chiaro, ma come HMAC
+  troncato a 16 caratteri.
+- **Segreti**: nessun segreto nel repo. Tutto in variabili d'ambiente Vercel, separate per
+  ambiente. `.env.local` è in `.gitignore` e si ricrea con `npx vercel env pull .env.local`.
+- **Deployment Protection**: `ssoProtection: all_except_custom_domains`. Il dominio pubblico è
+  aperto, le preview no. Gli script automatici passano dal Protection Bypass, che è una
+  variabile **di sistema** Vercel e non compare in `vercel env pull`.

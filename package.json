@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "db:apply": "tsx scripts/db-apply.ts",
     "db:seed": "tsx scripts/db-seed.ts",
+    "db:cards": "tsx scripts/db-cards.ts",
     "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
