@@ -134,24 +134,30 @@ Task files use frontmatter with ID, TASK, OWNER, STATUS, Acceptance Criteria.
 
 ### Code & Artifacts
 - `pwa/` - React 19 + TS + Vite PWA (client + admin monolith), `npm install && npm run dev`
-- `n8n/` - n8n workflow JSON exports (24+ workflows: client API, admin API, sub-workflows, jobs)
+- `api/index.ts` + `server/` - the whole backend: one serverless function mounting a Hono app
+- `scripts/` - maintenance run from a laptop, never at request time
+- `n8n/live_export_2026-08-16/` - **dead code kept for rollback only.** Do not edit, do not read
+  as documentation of current behaviour
 - `database/kyros_schema.sql` - PostgreSQL 18.1 schema
 
 ## Development Commands
 
-For the frontend (`pwa/`):
+Frontend (`pwa/`):
 - Dev server: `cd pwa && npm run dev` (http://localhost:5173)
 - Build: `cd pwa && npm run build`
 - Lint: `cd pwa && npm run lint`
-- Preview: `cd pwa && npm run preview`
 
-For n8n workflows:
-- Edit via n8n web UI (typically http://localhost:5678)
-- Export workflows as JSON to `n8n/`
+Root:
+- `npm run typecheck` - tsc over server, scripts and api
+- `npm test` - vitest
+- `npm run db:apply` - apply `database/kyros_schema.sql`
+- `npm run db:seed` - tenant, store, admin PIN, entry points, service points, content.
+  Needs `KYROS_SEED_ADMIN_PIN` (4-6 digits). Idempotent
+- `npm run db:cards` - reconcile only the content feed, no PIN needed. `-- --apply` to write
+- `npm run smoke` - end-to-end checks against production
 
-For database:
-- Schema location: `database/kyros_schema.sql`
-- Apply schema: `psql -U <user> -d <database> -f database/kyros_schema.sql`
+Deploy is `git push origin main`. Nothing else. Changing an env var needs a fresh deploy
+before it takes effect.
 
 ## Critical Constraints (Extreme MVP)
 
@@ -183,19 +189,19 @@ For database:
 
 ## Common Workflows
 
-### Adding a new n8n API endpoint:
-1. Check `specs/05_Infra_Architecture.md` for standard response format
-2. Use `SUB_Response_Standardizer` sub-workflow
-3. Validate multi-tenant isolation (always filter by `store_id` or `tenant_id`)
-4. Export workflow JSON to `n8n/`
-5. Update CHANGELOG.md
+### Adding an API endpoint:
+1. Pick the file: `server/routes/client.ts`, `admin.ts`, `chat.ts` or `internal.ts`
+2. **No `:id` in the path.** Id in the body, or the query string on GET
+3. Return through `ok()` / `fail()` from `server/lib/respond.ts`, never a bare `c.json()`
+4. On admin routes take `store_id` from the session token, never from the request
+5. Tagged template SQL only, never concatenation
+6. `npm run typecheck && npm test`, then update CHANGELOG.md
 
 ### Modifying database schema:
 1. Update `specs/04_Database.md` first (source of truth)
 2. Modify `database/kyros_schema.sql`
 3. Test migration path if altering existing tables
-4. Update affected n8n workflows
-5. Verify indices still align with query patterns
+4. Verify indices still align with query patterns
 
 ### Adding UI component:
 1. Check `specs/06_Frontend_Apps.md` for design specs and empty states
@@ -206,22 +212,22 @@ For database:
 
 ## Integration Notes
 
-### n8n Workflow Development
-The project uses Claude (via n8n-MCP integration) for n8n workflow implementation. The methodology is:
-1. Deep context analysis (read PRD/SPECS)
-2. Direct implementation in n8n platform (zero manual trial-error)
-3. Workflows are exported as JSON to `n8n/`
+### The client discovers everything by polling
+There are no push notifications and no websockets. `TICKET_CALLED`, `QUEUE_UPDATE` and
+`ADMIN_DING` were named in the old specs but never implemented; a customer learns they have
+been called on the next poll. Do not write code that waits for an event.
 
-Key n8n sub-workflows:
-- `SUB_Auth_Manager` - JWT session handling
-- `SUB_Socket_Emitter` - Real-time event broadcasting
-- `SUB_Response_Standardizer` - Standard HTTP response format
+### Marketing card icons and themes are a closed set
+`pwa/src/components/shared/MarketingCard.tsx` maps exactly four icons
+(`Gift`, `Coffee`, `Star`, `Info`) and four themes (`purple`, `orange`, `blue`, `green`).
+Anything else falls back silently to `Info` on `blue`, so a typo looks like a styling bug
+rather than an error. The card list lives in `scripts/marketing-cards.ts`.
 
-### Real-time Events (Socket.io)
-Socket events triggered by n8n workflows:
-- `TICKET_CALLED` - Notify specific client their turn is up
-- `QUEUE_UPDATE` - Broadcast new queue positions to all clients in store
-- `ADMIN_DING` - Sound/visual alert for service desk
+### Concierge AI
+OpenRouter, model in `KYROS_AI_MODEL`, monthly cap in `KYROS_AI_BUDGET_EUR` acting as a hard
+kill switch. The wiki it answers from is `knowledge/public/*.md`, compiled into
+`server/lib/wiki.generated.ts` at prebuild. Chat is English only. Prompt caching does not
+currently work (`cached_tokens: 0` on every call); accepted, costs cents.
 
 ## Reference Documents
 
