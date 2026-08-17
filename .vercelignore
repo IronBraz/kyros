@@ -1,0 +1,35 @@
+# What NOT to upload on a local `vercel deploy`.
+#
+# Deploys normally happen from git, where only tracked files exist and this file is
+# irrelevant. It matters for the escape hatch: `vercel deploy` from this machine uploads the
+# working directory, and the first attempt died with "File size limit exceeded (100 MB)"
+# because it swept in `_local/` (150 MB of the owner's private notes and scratch files).
+# Being gitignored was not enough, so the exclusions are restated here.
+
+# Owner's private working folder. Big, and none of Vercel's business.
+_local/
+
+# Regenerated locally by `graphify update .`
+graphify-out/
+
+node_modules/
+.git/
+.vercel/
+
+# Never ship secrets. The build reads env vars from the platform, not from a file.
+.env
+.env.local
+.env.*.local
+
+# Local build output: Vercel builds from source.
+pwa/dist/
+*.tsbuildinfo
+
+# Historical archive, kept in the repo for reference, useless at runtime.
+n8n/
+
+# Docs and process files the running app never reads.
+docs/
+project-board/
+specs/
+knowledge/_raw/
