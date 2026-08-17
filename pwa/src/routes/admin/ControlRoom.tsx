@@ -142,7 +142,9 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
           acceptingTickets: dbSettings.queue?.accepting_tickets ?? true,
           closedMessage: dbSettings.queue?.closed_message ?? 'We are currently closed. Please come back later.',
           avgServiceTime: dbSettings.queue?.avg_service_time_minutes ?? 5,
-          ghostTimeout: dbSettings.queue?.ghost_timeout_minutes ?? 15,
+          // 30, not 15: server/lib/janitor.ts falls back to 30 when the setting is absent,
+          // and the Settings panel showing 15 while the janitor waited 30 was a lie.
+          ghostTimeout: dbSettings.queue?.ghost_timeout_minutes ?? 30,
           calledTimeout: dbSettings.queue?.called_timeout_minutes ?? 5,
           welcomeMessage: dbSettings.display?.welcome_message ?? 'Welcome! You are in the queue.',
           language: dbSettings.display?.language ?? 'it',
@@ -207,6 +209,19 @@ export const ControlRoom: React.FC<ControlRoomProps> = ({ mode }) => {
 
         setBackendOffline(false);
         setCustomers(allCustomers);
+
+        // Keep the open/closed badge honest. loadSettings() runs once on mount, so without
+        // this the header showed whatever the queue was doing when this tab was opened: an
+        // operator who closed the queue from the shop tablet left every other screen still
+        // saying "Open", and the header sits in Layout, so that lie was on all five views.
+        // queue/status already reports accepting_tickets on every poll, it was just ignored.
+        if (typeof data.accepting_tickets === 'boolean') {
+          setSettings(prev =>
+            prev.acceptingTickets === data.accepting_tickets
+              ? prev
+              : { ...prev, acceptingTickets: data.accepting_tickets }
+          );
+        }
 
         // Update stats from real API data
         const waitingCount = data.counts?.waiting || 0;

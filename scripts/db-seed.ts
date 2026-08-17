@@ -156,17 +156,20 @@ try {
   );
   console.log(`[db-seed] admin   PIN hashed (scrypt), label "Manager"`);
 
-  // The three physical entry points, one QR or NFC tag each. `macchine` and `cassa` existed
-  // under n8n and came back on 2026-08-17: the migration started from an empty database on
-  // purpose, so the tags already stuck to the shelves pointed at slugs that no longer
-  // resolved and the customer got "Invalid QR code".
+  // The three physical entry points, one NFC tag each. The slugs are NOT free to change:
+  // they are whatever is already written on the tags stuck to the fixtures in the store, read
+  // off them one by one on 2026-08-17. The database follows the physical world here, not the
+  // other way round, because rewriting a tag means walking to it.
+  //
+  // The migration started from an empty database on purpose, so at first none of these
+  // resolved and every scan answered "Invalid QR code" (ENTRY_POINT_NOT_FOUND).
   //
   // slug is globally UNIQUE, so this upsert also re-points an existing slug at this store.
   const entryPoints: Array<{ id: string; slug: string }> = [];
   for (const [name, slug] of [
-    ['Ingresso Principale', 'main-entrance'],
-    ['Area Macchine', 'macchine'],
-    ['Cassa', 'cassa'],
+    ['Entrance', 'entrata'],
+    ['Accessories Wall', 'macchine'],
+    ['Desk', 'cassa'],
   ]) {
     const { rows } = await client.query<{ id: string; slug: string }>(
       `INSERT INTO entry_points (store_id, name, slug)
