@@ -4,6 +4,12 @@ import type { Store } from '@/types/admin';
 import { Delete, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
 import { verifyPin, getStores } from '@/lib/api/admin';
 
+// scripts/db-seed.ts accepts a 4-6 digit PIN (`/^\d{4,6}$/`). The keypad used to hardcode 4
+// in three places, so a 5 or 6 digit PIN could be seeded and then never typed: the pad
+// stopped accepting digits at the fourth one and there was no way to log in at all.
+const PIN_MIN_LENGTH = 4;
+const PIN_MAX_LENGTH = 6;
+
 export const LoginGate: React.FC = () => {
   const navigate = useNavigate();
   const [stores, setStores] = useState<Store[]>([]);
@@ -37,7 +43,7 @@ export const LoginGate: React.FC = () => {
 
   const handleDigit = (digit: string) => {
     setError(false);
-    if (pin.length < 4) {
+    if (pin.length < PIN_MAX_LENGTH) {
       setPin((prev) => prev + digit);
     }
   };
@@ -48,7 +54,7 @@ export const LoginGate: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (pin.length < 4 || loading) return;
+    if (pin.length < PIN_MIN_LENGTH || loading) return;
 
     setLoading(true);
     try {
@@ -117,16 +123,25 @@ export const LoginGate: React.FC = () => {
           </div>
 
           {/* PIN Display */}
-          <div className="flex justify-center gap-4 mb-8">
-            {[0, 1, 2, 3].map((i) => (
+          <div className="flex justify-center gap-4 mb-3">
+            {Array.from({ length: PIN_MAX_LENGTH }, (_, i) => (
               <div
                 key={i}
                 className={`w-4 h-4 rounded-full transition-all duration-300 ${
-                  i < pin.length ? 'bg-teal-400 scale-110' : 'bg-slate-700'
+                  i < pin.length
+                    ? 'bg-teal-400 scale-110'
+                    : // Past the minimum the remaining slots are optional, so they are dimmer:
+                      // the arrow lights up at 4 and a shorter PIN is not an unfinished one.
+                      i < PIN_MIN_LENGTH
+                      ? 'bg-slate-700'
+                      : 'bg-slate-700/40'
                 }`}
               />
             ))}
           </div>
+          <p className="text-center text-xs text-slate-400 mb-8 font-serif italic">
+            {PIN_MIN_LENGTH} to {PIN_MAX_LENGTH} digits
+          </p>
 
           {/* Numpad */}
           <div className="grid grid-cols-3 gap-4">
@@ -153,7 +168,7 @@ export const LoginGate: React.FC = () => {
             </button>
             <button
               onClick={handleSubmit}
-              disabled={loading || pin.length < 4}
+              disabled={loading || pin.length < PIN_MIN_LENGTH}
               className="h-16 rounded-2xl bg-teal-400 text-slate-900 flex items-center justify-center font-bold hover:bg-teal-300 active:scale-95 transition-all shadow-md shadow-teal-400/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? <Loader2 size={24} className="animate-spin" /> : <ArrowRight size={24} />}
