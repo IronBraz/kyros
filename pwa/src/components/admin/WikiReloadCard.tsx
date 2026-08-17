@@ -54,7 +54,10 @@ export const WikiReloadCard: React.FC<Props> = ({ storeId }) => {
       {status === 'error' && (
         <div className="flex items-center gap-2 text-xs text-red-400">
           <AlertTriangle size={13} />
-          <span>Reload failed — check n8n logs.</span>
+          {/* The wiki is compiled into the bundle at prebuild, so a reload can only ever
+              re-read what is already deployed. Changing a knowledge/public/*.md file needs a
+              redeploy, which is the thing an operator seeing this actually has to know. */}
+          <span>Reload failed. The wiki ships with the deploy: push a new one to change it.</span>
         </div>
       )}
 
