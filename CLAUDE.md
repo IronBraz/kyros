@@ -63,25 +63,43 @@ The source of truth is `database/kyros_schema.sql`. Key tables:
 - **Ticket Codes**: Auto-generated human-readable format `A-001`, `A-002`, ..., `B-001` (resets daily at midnight store timezone)
 - **Store Settings**: JSONB field in `stores.settings` with nested queue config (accepting_tickets, timeouts, etc.)
 - **Session Lifecycle**: `waiting` → `called` → `serving` → `finished` (or `missed`/`abandoned`)
-- **Janitor Job**: Background n8n workflow cleans ghost sessions (no heartbeat for 15min) and marks called-but-not-served as missed (5min)
+- **Janitor Job**: `server/lib/janitor.ts`, not an n8n workflow. Abandons ghost sessions (no heartbeat for `queue.ghost_timeout_minutes`, default 30) and marks called-but-not-served as missed (`queue.called_timeout_minutes`, default 5). Runs lazily off real requests via `waitUntil()` behind an atomic `job_runs` lock, because Hobby crons only fire once a day
 
 ## API Structure
 
+**No `:id` path parameters anywhere.** The id travels in the body (or the query string on
+GET), which is the shape the n8n webhooks had and the frontend still speaks. Writing
+`/sessions/:id/abandon` from memory gets a 404 with `"No route for ..."`. The routes below
+are the real list; `server/routes/*.ts` is the source of truth.
+
 ### Client API (Prefix: `/api/v1/client`)
 - `POST /sessions` - Create queue session (validates entry_point, checks store accepting_tickets)
-- `GET /sessions/:id` - Session recovery (for page refresh)
-- `POST /sessions/:id/heartbeat` - Keep-alive (every 60s)
-- `POST /sessions/:id/abandon` - User leaves queue
+- `GET /sessions?session_id=` - Session recovery (for page refresh)
+- `POST /sessions/heartbeat` - Keep-alive (every 60s), `session_id` in the body
+- `POST /sessions/abandon` - User leaves queue, `session_id` in the body
+- `GET /marketing-cards` - Content feed for the waiting room
+- `POST /chat/start` - Open (or resume) the concierge conversation
+- `POST /chat/send` - One concierge turn
 
 ### Admin API (Prefix: `/api/v1/admin`)
+Everything except `auth/verify` and `auth/stores` is behind `adminGuard`, declared *after*
+those two on purpose. **`store_id` always comes from the session token**, never from the
+request, even though the frontend still sends it.
 - `POST /auth/verify` - PIN login (returns session_token)
 - `GET /auth/stores` - List available stores (public endpoint)
-- `POST /queue/call-next` - FIFO call with DB lock (`FOR UPDATE SKIP LOCKED`)
+- `GET /queue/status` - Full board: waiting, called, serving, counts
 - `GET /queue/current` - Current queue state
-- `PATCH /stores/:id/settings` - Update store config (toggle queue on/off, etc.)
+- `POST /queue/call-next` - FIFO call with DB lock (`FOR UPDATE SKIP LOCKED`)
+- `PATCH /sessions/status` - Move a session along its lifecycle
+- `GET|PATCH /stores/settings` - Read/update store config (toggle queue on/off, etc.)
+- `GET|POST /entry-points`, `DELETE /entry-points/delete`
+- `GET|POST|PATCH|DELETE /marketing-cards`
+- `POST /wiki/reload` - Re-read the bundled wiki
+- `GET /usage` - AI spend against the monthly cap
 
 ### Standard Response Format
-All n8n workflows use `SUB_Response_Standardizer` for consistent responses:
+Every response goes through the same envelope (`server/lib/respond.ts`), inherited from the
+n8n `SUB_Response_Standardizer`:
 ```json
 {
   "success": true/false,
