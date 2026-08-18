@@ -7,6 +7,15 @@
 
 ---
 
+> **⚠️ DOCUMENTO STORICO — aggiornamento 2026-08-18**
+>
+> Questo handover è del 2026-05-15 e sta in `specs/` per continuità, ma **non è una fonte di
+> verità**. Il backend n8n che descrive è stato spento il 2026-08-17 e sostituito da una
+> funzione serverless su Vercel + Neon. Tutti i path `OUTPUT/n8n/...` citati qui sotto non
+> esistono più (né in quella forma, né in `n8n/`, cancellata da `main` il 2026-08-18).
+> Per l'architettura attuale: `specs/05_Infra_Architecture.md` e `CLAUDE.md`.
+> Le **decisioni di prodotto** prese qui restano invece valide.
+
 > **⚠️ AGGIORNAMENTO 2026-05-20 / 2026-05-21 — leggere prima del resto del documento**
 >
 > Le sezioni §6.1 e §7 F3 di questo handover descrivono un **AI Gateway microservice con streaming SSE**. Quella architettura è stata **superseded**: nella conversazione del 2026-05-20 l'owner ha scelto l'opzione "no gateway / no streaming". Il design corrente è:

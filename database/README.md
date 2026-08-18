@@ -44,4 +44,10 @@ See [`../specs/04_Database.md`](../specs/04_Database.md) for the detailed schema
 
 ## Per-store setup template
 
-`setup-store.sql.example` — copy to `_local/setup-store.sql`, edit with your real `store.id` and your public domain, run once to register the QR base URL in `stores.settings`. Required for `n8n/021_API_Admin_EntryPoints.json` to generate correct entry-point URLs.
+`setup-store.sql.example` — copy to `_local/setup-store.sql`, edit with your real `store.id` and your public domain, run once to write `qr_base_url` into `stores.settings`.
+
+> **Vestigial since the Vercel migration.** Nothing reads `settings.qr_base_url` any more.
+> Entry-point URLs are built server-side from the `KYROS_PUBLIC_URL` environment variable
+> (`server/routes/admin.ts:434`), so moving host is an env var and a redeploy, not a SQL
+> edit. The n8n backend concatenated the domain inside the SQL, which is where this template
+> came from. `npm run db:seed` still writes the column for compatibility.

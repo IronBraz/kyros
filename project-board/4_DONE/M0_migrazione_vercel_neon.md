@@ -2,7 +2,7 @@
 ID: M0
 TASK: Migrazione backend da n8n a Vercel + Neon (Fasi 0-4)
 OWNER: Claude
-STATUS: IN_PROGRESS
+STATUS: DONE
 PHASE: Migration
 DEPENDS_ON: -
 ESTIMATE: 15-20h

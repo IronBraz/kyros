@@ -21,10 +21,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Real-time**: **none — HTTP polling.** There is no Socket.io anywhere in this repo and never was; `SUB_Socket_Emitter` existed only as prose in the specs
 - **Infrastructure**: Vercel (team `brainforge1`, project `kyros`, Hobby plan)
 
-> **The n8n backend is history.** It is frozen at the tag `v1.5.0-n8n-final` and the branch
-> `legacy/n8n`, with the live workflows exported verbatim in `n8n/live_export_2026-08-16/`.
-> The numbered files in `n8n/*.json` were already stale before the migration: only 7 of 32
-> still matched the running instance. Do not treat them as documentation of anything.
+> **The n8n backend is history, and the `n8n/` folder is gone from `main`** (removed
+> 2026-08-18). It survives only in the tag `v1.5.0-n8n-final` and the branch `legacy/n8n`,
+> whose `n8n/` trees are byte-identical to the one deleted. Reach it with
+> `git show v1.5.0-n8n-final:n8n/live_export_2026-08-16/<file>`, never by looking for the
+> folder on disk. Even there it is a rollback artefact, not documentation: the numbered
+> `n8n/*.json` files were already stale before the migration (only 7 of 32 still matched the
+> running instance), and the `live_export_2026-08-16/` set describes a backend that no longer
+> exists. Task files under `project-board/4_DONE/` still cite these paths; that is history
+> talking, not a live reference.
 
 ### Key Architecture Decisions
 - **Multi-tenancy**: Shared database, shared schema (tenant_id/store_id columns)
@@ -136,9 +141,8 @@ Task files use frontmatter with ID, TASK, OWNER, STATUS, Acceptance Criteria.
 - `pwa/` - React 19 + TS + Vite PWA (client + admin monolith), `npm install && npm run dev`
 - `api/index.ts` + `server/` - the whole backend: one serverless function mounting a Hono app
 - `scripts/` - maintenance run from a laptop, never at request time
-- `n8n/live_export_2026-08-16/` - **dead code kept for rollback only.** Do not edit, do not read
-  as documentation of current behaviour
 - `database/kyros_schema.sql` - PostgreSQL 18.1 schema
+- `knowledge/public/` - the concierge wiki, compiled into the bundle at prebuild
 
 ## Development Commands
 

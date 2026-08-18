@@ -2,8 +2,14 @@
 
 **Version:** 1.0  
 **Phase:** Pilot  
-**Environment:** https://kyros.neuroforge.club (production VPS)  
-**Prerequisite:** F3 workflows active, wiki loaded, demo store seeded  
+**Environment:** https://kyros.neuroforge.club (Vercel + Neon since 2026-08-17)  
+**Prerequisite:** deploy live, wiki bundled at build time, demo store seeded  
+
+> **Written against the n8n backend**, decommissioned 2026-08-17. The test *steps* still
+> hold — the API contract did not change — but anything about workflows, the VPS or the
+> Cloudflare Tunnel is history. "Reload the wiki" in particular no longer re-reads files at
+> runtime: `knowledge/public/*.md` is compiled into the bundle, so changing it needs a
+> redeploy.
 
 How to seed demo data without manually chatting: `tests/scripts/seed_demo_conversation.ps1`
 

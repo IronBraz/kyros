@@ -45,25 +45,16 @@ Copy `../.env.example` to `../.env` and fill in your values. Vite-exposed variab
 
 ## API integration
 
-The PWA expects the n8n backend to be reachable on the same origin under `/api/v1/*`. In development this is achieved via the Vite dev proxy (`vite.config.ts`); in production via Caddy reverse proxy (see snippet below).
+The PWA expects the backend on the **same origin** under `/api/v1/*`, which is why
+`API_BASE` is an empty string and there is no CORS anywhere.
 
-## Caddy reverse proxy (production)
+- **Production** — Vercel serves `pwa/dist` as static files and rewrites `/api/*` to the
+  single serverless function (`api/index.ts`). The rewrite rules live in `vercel.json`.
+- **Development** — the two are separate processes, bridged by the Vite dev proxy in
+  `vite.config.ts`: run `./scripts/dev-api.ps1` (API on :3100) alongside `npm run dev`.
 
-```caddyfile
-yourdomain.example {
-  # API routes -> n8n backend
-  handle /api/* {
-    reverse_proxy localhost:5678
-  }
-
-  # SPA fallback for React Router
-  handle {
-    root * /var/www/kyros/pwa/dist
-    try_files {path} /index.html
-    file_server
-  }
-}
-```
+The Caddy reverse proxy that used to sit in front of n8n is gone. It applies only to the
+frozen `legacy/n8n` branch.
 
 ## Build output
 

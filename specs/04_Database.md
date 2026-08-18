@@ -8,7 +8,7 @@
 ## 1. Strategia di Multi-tenancy
 Kyros utilizza un approccio **Shared Database, Shared Schema**. 
 *   Ogni tabella critica contiene una colonna `company_id` o `store_id`.
-*   L'isolamento dei dati è garantito a livello applicativo (n8n/Backend).
+*   L'isolamento dei dati è garantito a livello applicativo (backend Hono: `store_id` preso sempre dal token di sessione admin, mai dalla richiesta).
 
 ---
 

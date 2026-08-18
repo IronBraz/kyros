@@ -14,19 +14,17 @@
 
 ---
 
-> ### 🚧 Migrazione in corso: da n8n a Vercel + Neon
+> ### Backend: migrazione da n8n a Vercel + Neon completata (2026-08-17)
 >
-> Il backend sta passando da **32 workflow n8n** self-hosted a una singola **funzione
-> serverless TypeScript (Hono) su Vercel**, con **Neon Postgres** come database.
-> Il frontend React resta com'è.
+> Il backend è una singola **funzione serverless TypeScript (Hono) su Vercel** con
+> **Neon Postgres**. I 32 workflow n8n self-hosted sono spenti e archiviati.
 >
-> L'ultima versione funzionante con backend n8n è congelata qui:
-> **tag [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final)** · branch **`legacy/n8n`** ·
-> workflow verbatim in [`n8n/live_export_2026-08-16/`](n8n/live_export_2026-08-16/).
->
-> Le sezioni *Architecture* e *Deployment* qui sotto descrivono ancora lo stack n8n e
-> verranno riscritte a migrazione completata. Vedi `CHANGELOG.md` 1.5.0 per i limiti noti
-> di quella versione (in sintesi: **nessuna autenticazione server-side**).
+> L'ultima versione funzionante con backend n8n resta congelata nel
+> **tag [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final)** e nel branch
+> **`legacy/n8n`**, che contengono i 35 workflow esportati verbatim dall'istanza viva
+> (`n8n/live_export_2026-08-16/`). Su `main` la cartella non c'è più: serviva solo da
+> rollback e non descrive il comportamento attuale.
+> Vedi `CHANGELOG.md` 2.0.0 per cosa è cambiato.
 
 ## What is Kyros?
 
@@ -40,7 +38,10 @@ Designed for retail with **variable footfall**: workshops, parts counters, conci
 
 - **Digital QR / NFC ticketing** — customers join the queue from their phone, no app store install
 - **NFC tag write-and-go** — admins can write entry-point tags from the Control Room
-- **Real-time Control Room** — single-screen FIFO queue board for operators
+- **Live Control Room** — single-screen FIFO queue board for operators, refreshed by polling
+- **AI concierge** — customers can ask the store anything while they wait. Answers come from
+  the store wiki in `knowledge/public/`, baked into the bundle at build time, through
+  OpenRouter with a hard monthly spend cap
 - **Multi-tenant by design** — shared schema, tenant isolation, brand-per-store theming
 - **PIN-based admin access** — no user accounts to provision, no passwords to forget.
   PINs are stored as scrypt hashes and rate limited; sessions are HMAC-signed tokens
@@ -86,8 +87,9 @@ Designed for retail with **variable footfall**: workshops, parts counters, conci
   relative and there is no CORS anywhere.
 
 The previous backend was 32 n8n workflows self-hosted behind a Cloudflare Tunnel. It is
-frozen at [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final) with the workflows
-exported verbatim in `n8n/live_export_2026-08-16/`.
+frozen at [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final), which still carries the
+workflows exported verbatim in `n8n/live_export_2026-08-16/`.
+
 ## Project structure
 
 ```
@@ -104,11 +106,10 @@ kyros/
 ├── pwa/                       # React 19 + TS + Vite (client + admin monolith)
 ├── knowledge/public/          # Store wiki, baked into the bundle at build time
 ├── database/                  # Postgres schema
-├── scripts/                   # db-apply, db-seed, smoke, generate-wiki, dev-api
+├── scripts/                   # db-apply, db-seed, db-cards, smoke, generate-wiki, dev-api
 ├── tests/                     # vitest unit tests
 ├── specs/                     # Technical specifications (Italian)
 ├── project-board/             # Kanban-style task board (markdown)
-├── n8n/                       # Historical: the previous backend, frozen
 └── docs/
     └── Kyros_Overview.pdf     # Project overview / pitch deck
 ```
@@ -159,9 +160,13 @@ KYROS_SMOKE_PIN=<pin> npm run smoke        # full journey against a running depl
 ## Roadmap
 
 - **Phase 1 — MVP (done)** — Single-store FIFO, PIN auth, QR + NFC ticketing, Control Room, marketing feed, janitor jobs, daily reset, PWA monolith
-- **Phase 1.5 — In progress** — HTTPS deploy, end-to-end tests, deploy automation
-- **Phase 2 — Planned** — Multi-store routing, AI-driven priority, push notifications, operator analytics dashboards
-- **Phase 3 — Vision** — Voice calling, multi-language i18n, AI concierge layer
+- **Phase 1.5 — Pilot (done)** — AI concierge over the store wiki, budget cap, HTTPS on a real domain, server-side auth, serverless backend on Vercel + Neon
+- **Phase 2 — Planned** — Multi-store routing, priority rules, push notifications, operator analytics
+- **Phase 3 — Vision** — Voice calling, multi-language i18n
+
+Known gaps, stated on purpose: no monitoring or alerting, no backups beyond Neon's
+point-in-time recovery, and the customer's browser learns everything by polling — there is
+no websocket and no push.
 
 ## Documentation
 

@@ -136,6 +136,9 @@ Sono i motivi per cui si migra. Chi ripristina questo tag li eredita:
 2. Applicare `database/kyros_schema.sql` su Postgres.
 3. Importare i workflow da **`n8n/live_export_2026-08-16/`** (non da `n8n/*.json`, sono stalli):
    `n8n import:workflow --separate --input=<dir>`.
+   *Nota 2026-08-18: la cartella `n8n/` non esiste più su `main`. Questi passi vanno eseguiti
+   dopo `git checkout v1.5.0-n8n-final` (o dal branch `legacy/n8n`), dove l'albero `n8n/` è
+   identico a quello cancellato — stesso hash `86d4267`.*
 4. Ricreare a mano le credenziali n8n (`Postgres Kyros`, OpenRouter): l'export le strippa.
 5. Cloudflare Tunnel su `mind.neuroforge.club`, PWA buildata in `config/caddy/kyros/`.
 

@@ -7,6 +7,11 @@ PHASE: Pilot
 COMPLETED: 2026-05-22
 ---
 
+> **Documento storico.** Descrive il backend chat a workflow n8n su `mind.neuroforge.club`,
+> spento e archiviato il 2026-08-17. Le decisioni di prodotto qui dentro valgono ancora;
+> i workflow, i path e l'infrastruttura no. L'implementazione attuale è in
+> `server/routes/chat.ts` e `server/lib/openrouter.ts`.
+
 ## Completato
 
 Tutti i workflow n8n della chat AI sono attivi e funzionanti in produzione (mind.neuroforge.club).
