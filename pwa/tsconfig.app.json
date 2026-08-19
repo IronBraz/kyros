@@ -16,8 +16,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Path mapping */
-    "baseUrl": ".",
+    /* Path mapping. No `baseUrl`: TypeScript 7 removed it (TS5102), and since 4.1 `paths`
+       resolves relative to this file without it. Vite resolves the same alias separately
+       through `resolve.alias` in vite.config.ts, so both halves have to stay in step. */
     "paths": {
       "@/*": ["./src/*"]
     },
