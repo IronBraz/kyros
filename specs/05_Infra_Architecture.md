@@ -6,10 +6,11 @@
 
 > **Nota sulla storia.** Fino al 2026-08-16 questo documento descriveva un backend fatto di 32
 > workflow n8n self-hosted, con Socket.io e Caddy dietro un Cloudflare Tunnel. Quella
-> architettura non esiste più. È congelata al tag `v1.5.0-n8n-final` e al branch `legacy/n8n`,
-> che contengono l'export letterale dei workflow vivi in `n8n/live_export_2026-08-16/`;
-> su `main` quella cartella è stata cancellata il 2026-08-18. Il presente documento descrive
-> solo ciò che gira adesso.
+> architettura non esiste più. Il codice di allora è congelato al tag `v1.5.0-n8n-final` e al
+> branch `legacy/n8n`, ma i file dei workflow non sono più in git da nessuna parte: rimossi
+> dall'intera storia il 2026-08-19, prima di pubblicare il repository, perché contenevano
+> l'email personale dell'autore. Restano archiviati dentro l'istanza n8n. Il presente
+> documento descrive solo ciò che gira adesso.
 
 ---
 

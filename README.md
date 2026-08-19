@@ -19,11 +19,12 @@
 > Il backend è una singola **funzione serverless TypeScript (Hono) su Vercel** con
 > **Neon Postgres**. I 32 workflow n8n self-hosted sono spenti e archiviati.
 >
-> L'ultima versione funzionante con backend n8n resta congelata nel
+> L'ultimo stato del codice prima della migrazione resta nel
 > **tag [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final)** e nel branch
-> **`legacy/n8n`**, che contengono i 35 workflow esportati verbatim dall'istanza viva
-> (`n8n/live_export_2026-08-16/`). Su `main` la cartella non c'è più: serviva solo da
-> rollback e non descrive il comportamento attuale.
+> **`legacy/n8n`**. I file JSON dei workflow, invece, non sono più in git da nessuna
+> parte: sono stati rimossi dall'intera storia il 2026-08-19, prima di rendere pubblico
+> questo repository, perché contenevano l'indirizzo email personale dell'autore. I workflow
+> restano archiviati e ripristinabili dentro l'istanza n8n che li eseguiva.
 > Vedi `CHANGELOG.md` 2.0.0 per cosa è cambiato.
 
 ## What is Kyros?
@@ -86,9 +87,11 @@ Designed for retail with **variable footfall**: workshops, parts counters, conci
 - **Same origin** — the SPA and the API share one host, so the frontend calls `/api/v1/*`
   relative and there is no CORS anywhere.
 
-The previous backend was 32 n8n workflows self-hosted behind a Cloudflare Tunnel. It is
-frozen at [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final), which still carries the
-workflows exported verbatim in `n8n/live_export_2026-08-16/`.
+The previous backend was 32 n8n workflows self-hosted behind a Cloudflare Tunnel. The code
+around them is frozen at [`v1.5.0-n8n-final`](../../releases/tag/v1.5.0-n8n-final). The
+workflow JSON files themselves are no longer in git at any commit, branch or tag: they were
+stripped from the whole history on 2026-08-19, before this repository was made public,
+because they embedded the author's personal email address.
 
 ## Project structure
 

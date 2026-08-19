@@ -6,7 +6,9 @@
 > **Nota sulla storia.** Fino al 2026-08-16 Kyros girava su un PC di casa, dentro lo stack
 > Docker "NeuroForge", esposto da un Cloudflare Tunnel verso Caddy, con la logica in 32 workflow
 > n8n. Niente di tutto questo è più vero. Restano il tag `v1.5.0-n8n-final` e il branch
-> `legacy/n8n` come rollback. Gli script `manage_kyros_db.ps1` e il `docker-compose` di
+> `legacy/n8n` con il codice di allora, ma **senza** i workflow: quei file sono stati rimossi
+> dall'intera storia git il 2026-08-19, prima di pubblicare il repository, e vivono solo
+> archiviati dentro l'istanza n8n. Gli script `manage_kyros_db.ps1` e il `docker-compose` di
 > NeuroForge non servono più a nulla per Kyros.
 
 ---
@@ -137,7 +139,7 @@ Non c'è più un PC che può esplodere. Gli scenari residui:
 | Deploy rotto | Vercel → Deployments → il deploy precedente → **Promote to Production**. Istantaneo |
 | Database perso o corrotto | Neon → Restore (point-in-time). Poi `npm run db:apply` e `npm run db:seed` se serve ricostruire |
 | Vercel giù | Nessun piano B. Dipendenza accettata per il pilota |
-| Rollback totale all'era n8n | `git checkout legacy/n8n`, riaccendere lo stack Docker, ripuntare il DNS al tunnel. Ha senso solo se il problema è strutturale |
+| Rollback totale all'era n8n | `git checkout legacy/n8n`, riaccendere lo stack Docker, ripuntare il DNS al tunnel, e **ripristinare i workflow dall'archivio dentro n8n** (non sono più in git). Ha senso solo se il problema è strutturale |
 
 ---
 

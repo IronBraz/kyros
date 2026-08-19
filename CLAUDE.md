@@ -21,15 +21,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Real-time**: **none — HTTP polling.** There is no Socket.io anywhere in this repo and never was; `SUB_Socket_Emitter` existed only as prose in the specs
 - **Infrastructure**: Vercel (team `brainforge1`, project `kyros`, Hobby plan)
 
-> **The n8n backend is history, and the `n8n/` folder is gone from `main`** (removed
-> 2026-08-18). It survives only in the tag `v1.5.0-n8n-final` and the branch `legacy/n8n`,
-> whose `n8n/` trees are byte-identical to the one deleted. Reach it with
-> `git show v1.5.0-n8n-final:n8n/live_export_2026-08-16/<file>`, never by looking for the
-> folder on disk. Even there it is a rollback artefact, not documentation: the numbered
-> `n8n/*.json` files were already stale before the migration (only 7 of 32 still matched the
-> running instance), and the `live_export_2026-08-16/` set describes a backend that no longer
-> exists. Task files under `project-board/4_DONE/` still cite these paths; that is history
-> talking, not a live reference.
+> **The n8n backend is history, and the `n8n/` folder is gone from git entirely** — not just
+> from `main`, but from every commit, branch and tag. It was deleted from the tree on
+> 2026-08-18 and then stripped from the whole history on 2026-08-19 with `git filter-repo`,
+> before this repository was made public, because those exports embedded the author's personal
+> email address. `git show v1.5.0-n8n-final:n8n/...` no longer resolves: do not reach for it.
+> The workflows survive in two places outside git — archived (not deleted) inside the n8n
+> instance that ran them, and in a local off-repo archive on the owner's machine. Even then
+> they are a rollback artefact, not documentation: the numbered `n8n/*.json` files were
+> already stale before the migration (only 7 of 32 still matched the running instance), and
+> the `live_export_2026-08-16/` set describes a backend that no longer exists. Task files
+> under `project-board/4_DONE/` still cite these paths; that is history talking, not a live
+> reference.
 
 ### Key Architecture Decisions
 - **Multi-tenancy**: Shared database, shared schema (tenant_id/store_id columns)
